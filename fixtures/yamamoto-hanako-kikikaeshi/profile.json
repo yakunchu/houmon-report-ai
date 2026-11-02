@@ -1,0 +1,44 @@
+{
+  "_注意": "架空データ。実在の人物・医療機関とは関係ありません。基本情報と処方内容は薬局側の既存データ（レセコン相当）で、本番では端末内に保存し、AI には文脈として渡す。",
+  "fictional": true,
+  "patient": {
+    "name": "山本 花子",
+    "kana": "ヤマモト ハナコ",
+    "birthDate": "1940-04-01",
+    "age": 86,
+    "sex": "女性",
+    "address": "熊本県熊本市（架空）"
+  },
+  "family": "長女（別居。週末に様子を見に来る）",
+  "recipients": {
+    "careManager": "あおぞら居宅介護支援事業所　ケアマネジャー 佐藤 美和 様",
+    "doctor": "みどり在宅クリニック　内科 高橋 健一 先生御侍史"
+  },
+  "pharmacy": "ジロー薬局　薬剤師 前田 二郎",
+  "reportDate": "2026-11-05",
+  "visitDate": "2026-11-05",
+  "nextVisitDate": "2026-12-03",
+  "visitFrequency": { "choice": "その他", "note": "28日毎" },
+  "dispensingForm": "一包化（別包有）",
+  "currentMedicationManager": "本人",
+  "currentManagementMethod": "",
+  "prescription": {
+    "date": "2026-11-05",
+    "prescriber": "みどり在宅クリニック 内科 高橋 健一",
+    "items": [
+      { "drug": "アムロジピン錠 5mg", "dose": "1錠", "usage": "1日1回 朝食後", "days": "28日" },
+      { "drug": "シタグリプチン錠 50mg", "dose": "1錠", "usage": "1日1回 朝食後", "days": "28日" },
+      { "drug": "ランソプラゾールOD錠 15mg", "dose": "1錠", "usage": "1日1回 朝食後", "days": "28日" },
+      { "drug": "ドネペジルOD錠 5mg", "dose": "1錠", "usage": "1日1回 朝食後", "days": "28日" },
+      { "drug": "酸化マグネシウム錠 330mg", "dose": "2錠", "usage": "1日2回 朝夕食後", "days": "28日" },
+      { "drug": "センノシド錠 12mg", "dose": "1錠", "usage": "1日1回 就寝前（便秘時）", "days": "14回分" },
+      { "drug": "ロキソプロフェンテープ 100mg", "dose": "28枚", "usage": "1日1回 腰に貼付", "days": "—" }
+    ],
+    "concomitant": "なし"
+  },
+  "fixedFields": {
+    "counselingTarget": "本人",
+    "genericPreference": "後発医薬品での処方を希望する事を確認した。",
+    "medicineNotebook": "ご持参いただいたお薬手帳に、今回の処方内容を反映したシールを貼付。"
+  }
+}
