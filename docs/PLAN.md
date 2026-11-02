@@ -217,6 +217,7 @@ gitleaks は未導入のため、依存を増やさず Node スクリプトで�
 
 - Next.js（App Router、TypeScript、実装時に最新安定版を確認）、Tailwind CSS、Zod、`@anthropic-ai/sdk`。DB なし。
 - 配信: 開発中は PC で `next dev`、スマホは同一 LAN で確認（テキスト経路は http で可。マイクは HTTPS 必須）。デモ用に Vercel 等へ配信するかは §11（無料枠の条件を確認してから）。
+- **スマホで試すときの開発サーバーの起動方法（2026-11-02 の教訓）**: Claude Code の内蔵ブラウザ用に起動したサーバー（preview）は Claude のターンが終わるとアプリ側で停止されるため、iPhone から開くと「サーバーが応答を停止」になる。スマホ実機で使うときは **Terminal パネルで `npm run dev` を起動**する（ターンが終わっても動き続ける。止めるのは Ctrl+C）。
 
 ```
 houmon-report-ai/
