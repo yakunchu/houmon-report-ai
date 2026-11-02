@@ -154,7 +154,15 @@
 | **C. Cloudflare Quick Tunnel** `cloudflared tunnel --url http://localhost:3000` | `cloudflared` を PC に入れて起動 → 表示される `trycloudflare.com` の URL をスマホで開く | Cloudflare アカウント不要。証明書不要。LAN の外からも開ける | **URL を知っていれば誰でも開発サーバーに到達できる**（API キーはサーバー側にあるので第三者に使われる恐れ）→ `--allowed-mail` のメール認証ゲートを必ず併用。通信は Cloudflare を経由（マスク済みの会話が通る）。URL は起動ごとに変わり、稼働保証なし、同時 200 リクエストまで、開発・テスト用途と明記。`allowedDevOrigins` に `*.trycloudflare.com` の追加が必要（出典: Cloudflare「Quick Tunnels」） | 自宅 LAN の外でのデモ、CA を入れられない端末 |
 | **D. 早期デプロイ（Vercel 等）** | GitHub 連携でデプロイし、環境変数にキーを置く | 本番に近い確認。HTTPS は自動 | 公開 URL + サーバー側 API キー → 認証を付けないと誰でも API を使えてしまう。11/7 の「安全に公開する方法」を聞いてから判断（社長の方針） | 提出直前 |
 
-**方針案**: A を本命にする。11/6 の着手時に (1) mkcert で LAN IP 入りの証明書を作る（Next が `--experimental-https` の初回に取得する mkcert バイナリの流用、または winget 等での導入 — 当日に確認）(2) `package.json` に `dev:https` スクリプトを足す (3) スマホに `rootCA.pem` を入れて信頼する。スマホが Android なら B で先に録音 UI を確かめ、iPhone なら A だけで進める。C は LAN 外でのデモの予備（必ず `--allowed-mail` 付き）。D は 11/7 以降。いずれも `allowedDevOrigins` はホスト名で判定されるため https でも必要。
+**方針（2026-11-02 確定。社長のスマホは iPhone）**: **A で進める。B（Android Chrome のフラグ）は対象外。** C は LAN 外でのデモの予備（必ず `--allowed-mail` 付き）。D は 11/7 以降。いずれも `allowedDevOrigins` はホスト名で判定されるため https でも必要。
+
+11/6 の手順（iPhone 向け）:
+1. PC で mkcert を用意する（Next が `--experimental-https` の初回に取得する mkcert バイナリの流用か、winget 等での導入。当日に一次情報で確認）。`mkcert -install` のあと `mkcert 192.168.1.112 localhost 127.0.0.1 ::1` で LAN IP 入りの証明書を作る（PC の IP は DHCP で変わり得るので、ルーターで固定割当にするか、変わったら作り直す）。
+2. `package.json` に `dev:https`（`next dev --experimental-https --experimental-https-key <key> --experimental-https-cert <cert>`）を足す。証明書と鍵は git 管理外に置く（`.gitignore` に追加。`rootCA-key.pem` は PC の外に出さない）。
+3. iPhone に `rootCA.pem`（`mkcert -CAROOT` の場所）を AirDrop かメールで送って開く → 設定「プロファイルがダウンロードされました」からインストール → 設定 > 一般 > 情報 > 証明書信頼設定 で「ルート証明書を全面的に信頼」を ON（出典: mkcert README、Apple サポート 102390）。
+4. Safari で `https://192.168.1.112:3000` を開き、鍵マークが出ること、`window.isSecureContext` が true になること、マイク許可のダイアログが出ることを確認する。
+5. 録音の設計判断（§4-5）: Safari の `webkitSpeechRecognition` が端末内処理（`processLocally`）に対応しているかは未確認なので、まず `SpeechRecognition.available({ langs: ["ja-JP"], processLocally: true })` の戻り値を実機で確かめる。`unavailable` なら、録音は MediaRecorder で端末内に音声を残すだけにし、文字起こしは iPhone のキーボード音声入力（第1段階の経路）を使う方針に切り替える。サーバー送信型の音声認識は使わない。
+6. 証明書の有効期限や IP 変更で開けなくなったときの復旧手順を README に書く。
 
 ---
 
@@ -238,7 +246,7 @@ houmon-report-ai/
 | （11/2 実績） | 11/3〜11/4 の予定分まで到達: 一連の経路（貼り付け → マスク → 下書き → フォーム → 確定 → 復元 → コピー・印刷）が動作。評価 13/13、S 原文引用、12.7 秒（effort medium） | 並行実装 Workflow（33 エージェント）→ レビュー 16 件修正。`CLAUDE_EFFORT` が Claude Code の環境変数と衝突したため設定名を `HOUMON_EFFORT` に変更 |
 | 11/4（水） | MVP 完成。見本との一致率を `npm run eval` で確認 | 全欄・備考・SOAP・根拠、要確認バッジ、引用照合、確定 → 復元 → コピー・印刷 |
 | 11/5（木） | スマホで実用に耐える速さと見やすさ | 大きな文字の調整、エラー処理、キャッシュ、Opus/Sonnet・effort 比較、2 本目の台本、`/pii-check` |
-| 11/6（金） | デモ経路の固定 + 録音 | **録音・端末内音声認識を追加（目安日）**、README（構成図・Claude 機能の使い分け・架空データ方針）、`/eval-report` 整備 |
+| 11/6（金） | デモ経路の固定 + 録音 | **iPhone から HTTPS で開く（§4-6 の A: mkcert の証明書 + 証明書の信頼）→ 録音・端末内音声認識の可否判定と追加（目安日）**、README（構成図・Claude 機能の使い分け・架空データ方針）、`/eval-report` 整備 |
 | 11/7（土） | 提出物の下書き完成 | デモ動画（3分以内、画面録画）の台本と撮影、プロジェクト概要・Claude の使い方の回答文、最終評価。セッション「安全に公開する方法」を聞いてから公開（Vercel 等）の可否を判断 |
 | 11/8（日） | 20:00 までに提出 | 最終確認（フック・監査・動作）、タグ付け、Cerebral Valley フォームから提出 |
 
