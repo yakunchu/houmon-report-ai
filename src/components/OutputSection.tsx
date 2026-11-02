@@ -1,5 +1,6 @@
 /** ④ 確定・出力。要確認が残っていれば一覧を出し、確定後はコピー・印刷できるテキストを出す */
 import { useRef, useState } from "react";
+import { copyText } from "@/lib/ui/clipboard";
 import { Button, Section, UnsureBadge, WarnText } from "./ui";
 
 type Props = {
@@ -32,28 +33,18 @@ export function OutputSection({ unsureLabels, confirmed, onConfirm, onBackToEdit
   }
 
   async function copy(): Promise<void> {
-    try {
-      await navigator.clipboard.writeText(reportText);
+    // secure context では navigator.clipboard、http の LAN 接続などでは textarea + execCommand の予備手段
+    const method = await copyText(reportText);
+    if (method !== "failed") {
       setMessage({ ok: true, text: "コピーしました。報告書ソフトに貼り付けてください。" });
       return;
-    } catch {
-      // http の LAN 接続などでは使えない。選択状態にして古い方式を試す
     }
+    // どちらも使えなければ、本文を選択状態にして手動コピーを案内する
     selectReport();
-    let done = false;
-    try {
-      done = document.execCommand("copy");
-    } catch {
-      done = false;
-    }
-    setMessage(
-      done
-        ? { ok: true, text: "コピーしました。報告書ソフトに貼り付けてください。" }
-        : {
-            ok: false,
-            text: "自動でコピーできませんでした。文章を選択状態にしたので、長押し（パソコンは Ctrl+C）でコピーしてください。",
-          },
-    );
+    setMessage({
+      ok: false,
+      text: "自動でコピーできませんでした。文章を選択状態にしたので、長押し（パソコンは Ctrl+C）でコピーしてください。",
+    });
   }
 
   // 置き換え用の記号の形だけを探す（出力の見出し【基本情報】【S】などとは区別する）

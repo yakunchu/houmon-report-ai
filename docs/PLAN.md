@@ -141,7 +141,20 @@
 - 第2段階: `SpeechRecognition.available({langs:["ja-JP"], processLocally:true})` が `available`（または `downloadable` → `install()` 成功）のときだけ録音ボタンを有効化。`processLocally = true` 固定。`unavailable` の端末には「この端末では端末内音声認識が使えません」と表示して第1段階に誘導。
 - **使わないもの**: サーバー送信型の Web Speech（既定動作）、外部の文字起こし API（生の音声に実名が含まれる）。ブラウザ内 Whisper は期間内の実装・検証が重く見送る。
 - 日本語の端末内認識が社長の端末で使えるかは**未確認** → 11/3 に実機（スマホ・PC）で `available()` の値を確認し、第2段階の可否を決める。
-- マイク利用は HTTPS（または localhost）が必要。スマホ実機で音声を試すには HTTPS の配信先が要る（§7）。
+- マイク利用は HTTPS（または localhost）が必要。スマホ実機で音声を試すには HTTPS の配信先が要る（§4-6）。
+
+### 4-6. 開発中にスマホから HTTPS で開く方法（方針案・2026-11-02 追記、実装は 11/6）
+
+**背景**: `getUserMedia`（録音）と `navigator.clipboard` は secure context（https か localhost）でしか使えない。Chromium の定義では secure origin は https／wss／localhost／127.0.0.0/8／::1 などで、LAN の `http://192.168.1.112:3000` は含まれない（出典: Chromium「Prefer Secure Origins For Powerful New Features」）。文字入力の経路は http のまま動く（`next.config.ts` の `allowedDevOrigins` に `192.168.1.112` と `192.168.1.*` を登録済み。Next.js は `localhost` 以外のオリジンからの `/_next/*` をブロックするため。`*` はホスト名の 1 ラベル＝IP では 1 オクテット）。コピーは http でも動くよう `textarea` + `document.execCommand("copy")` の予備手段を入れた。
+
+| 方法 | 手順の概要 | 長所 | 短所・リスク | 向く場面 |
+|---|---|---|---|---|
+| **A. 自前証明書 + `next dev --experimental-https`** | mkcert で LAN IP を含む証明書を作る（例: `mkcert 192.168.1.112 localhost 127.0.0.1 ::1`）→ `next dev --experimental-https --experimental-https-key <key> --experimental-https-cert <cert>` → スマホに `rootCA.pem`（`mkcert -CAROOT` の場所）を入れて信頼する。iOS: AirDrop かメールで開く → 設定「プロファイルがダウンロードされました」でインストール → 設定 > 一般 > 情報 > 証明書信頼設定 で「ルート証明書を全面的に信頼」を ON（出典: mkcert README、Apple サポート 102390）。Android: ユーザー証明書として CA をインストール | LAN 内で完結し第三者を経由しない。iPhone・Android 両方で使える。一度入れれば以後は安定 | 初回設定に手間。PC の IP が変わると証明書の作り直し（ルーターの DHCP 固定割当で回避）。**Next 同梱の自動生成証明書は `localhost` / `127.0.0.1` / `::1` だけ**で LAN IP を含まない（確認済: `node_modules/next/dist/lib/mkcert.js`）ので、自前の証明書が必須。開発用 CA をスマホに入れる（`rootCA-key.pem` は PC 外に出さない） | **本命**（11/6 の録音開発） |
+| **B. Android Chrome のフラグ** `chrome://flags/#unsafely-treat-insecure-origin-as-secure` に `http://192.168.1.112:3000` を登録 | スマホの Chrome で設定、2〜3 分 | 証明書不要で最速 | Android Chrome だけ（iPhone の Safari には無い）。Chromium の資料は「そのセッション・そのオリジンだけ secure 扱い」とし、Android での可否は chrome://flags 形式については明記なし（コマンドライン版は root が必要と記載）→ 実機で要確認（出典: Chromium「Deprecating Powerful Features on Insecure Origins」） | 社長のスマホが Android なら、録音 UI の即日確認用 |
+| **C. Cloudflare Quick Tunnel** `cloudflared tunnel --url http://localhost:3000` | `cloudflared` を PC に入れて起動 → 表示される `trycloudflare.com` の URL をスマホで開く | Cloudflare アカウント不要。証明書不要。LAN の外からも開ける | **URL を知っていれば誰でも開発サーバーに到達できる**（API キーはサーバー側にあるので第三者に使われる恐れ）→ `--allowed-mail` のメール認証ゲートを必ず併用。通信は Cloudflare を経由（マスク済みの会話が通る）。URL は起動ごとに変わり、稼働保証なし、同時 200 リクエストまで、開発・テスト用途と明記。`allowedDevOrigins` に `*.trycloudflare.com` の追加が必要（出典: Cloudflare「Quick Tunnels」） | 自宅 LAN の外でのデモ、CA を入れられない端末 |
+| **D. 早期デプロイ（Vercel 等）** | GitHub 連携でデプロイし、環境変数にキーを置く | 本番に近い確認。HTTPS は自動 | 公開 URL + サーバー側 API キー → 認証を付けないと誰でも API を使えてしまう。11/7 の「安全に公開する方法」を聞いてから判断（社長の方針） | 提出直前 |
+
+**方針案**: A を本命にする。11/6 の着手時に (1) mkcert で LAN IP 入りの証明書を作る（Next が `--experimental-https` の初回に取得する mkcert バイナリの流用、または winget 等での導入 — 当日に確認）(2) `package.json` に `dev:https` スクリプトを足す (3) スマホに `rootCA.pem` を入れて信頼する。スマホが Android なら B で先に録音 UI を確かめ、iPhone なら A だけで進める。C は LAN 外でのデモの予備（必ず `--allowed-mail` 付き）。D は 11/7 以降。いずれも `allowedDevOrigins` はホスト名で判定されるため https でも必要。
 
 ---
 

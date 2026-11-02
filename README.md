@@ -75,6 +75,7 @@ npm run eval                  # 架空台本で下書きを作り、見本と比
 ```
 
 - モデルと effort は環境変数で切り替えられる（`.env.example` の `HOUMON_MODEL` / `HOUMON_EFFORT`）。
+- 同じ Wi-Fi のスマホからは `http://<PC の IP>:3000` で開ける。Next.js は `localhost` 以外からの開発アクセスをブロックするため、`next.config.ts` の `allowedDevOrigins` に PC の LAN IP（`192.168.1.112` と `192.168.1.*`）を登録してある。別のネットワークでは書き換える。http のためマイク（録音）は使えない（コピーは予備手段で動く）。HTTPS で開く方法の比較は `docs/PLAN.md` §4-6。
 - ルールを変えるときは `prompts/report-rules.md` だけを直し、`npm run gen:prompt` → `npm run eval` で見本との一致を確認する。評価の記録は `eval-results/history.md` に残る。
 
 ## 架空データ方針
