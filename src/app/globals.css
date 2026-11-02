@@ -1,0 +1,34 @@
+@import "tailwindcss";
+
+/* 白背景固定（ダークモードは使わない）。現場で読めるよう本文は 18px 以上 */
+:root {
+  color-scheme: light;
+  --background: #ffffff;
+  --foreground: #0f172a;
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --font-sans: system-ui, -apple-system, "Hiragino Sans", "Yu Gothic UI", "Meiryo", "Noto Sans JP", sans-serif;
+}
+
+html {
+  font-size: 18px;
+}
+
+body {
+  background: var(--background);
+  color: var(--foreground);
+  font-family: var(--font-sans);
+  font-size: 1rem;
+  line-height: 1.7;
+  overflow-wrap: anywhere;
+}
+
+/* 印刷は出力本文だけ（入力 UI は print:hidden で隠す） */
+@media print {
+  html {
+    font-size: 12pt;
+  }
+}

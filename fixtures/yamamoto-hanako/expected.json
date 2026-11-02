@@ -1,0 +1,27 @@
+{
+  "_注意": "架空データ。expected_report.md の「会話からAIが埋める欄」「SOAP」を、src/lib/report/schema.ts の形に写したもの。選択式は完全一致、備考と SOAP は人が見比べる（eval は類似度の目安を出す）。",
+  "fictional": true,
+  "medicationManager": { "choice": "本人", "note": "長女が週末に確認" },
+  "managementMethod": { "choice": "カレンダー", "note": "今回の訪問で設置" },
+  "adherence": { "choice": "悪", "note": "朝の飲み忘れ 週3回程度" },
+  "leftoverMedications": [
+    { "drugName": "朝食後の一包化分", "amount": "4日分", "note": "" },
+    { "drugName": "センノシド錠", "amount": "要確認", "note": "未使用分" }
+  ],
+  "mealAmount": { "choice": "普通", "note": "" },
+  "mealsPerDay": { "value": "3", "note": "" },
+  "swallowing": { "choice": "問題なくできる", "note": "むせなし" },
+  "urinationFrequency": { "choice": "普通", "note": "夜間2回" },
+  "bowelMovement": { "choice": "便秘", "note": "3日に1回" },
+  "daytimeSleep": { "choice": "有", "duration": "1時間0分", "note": "昼食後に昼寝" },
+  "nightSleep": { "choice": "良", "note": "" },
+  "exercise": { "choice": "大体できる", "note": "家の中は歩行可" },
+  "mobility": { "choice": "あまりできない", "note": "外出時は杖と長女の付き添いが必要" },
+  "dailyTendency": { "choice": "有", "note": "朝はテレビを見ていて、薬を後回しにして忘れることがある" },
+  "soap": {
+    "s": "「朝はバタバタして、薬を飲んだか分からんようになる」「出んときはおなかが張って、ちょっと苦しか」",
+    "o": "処方内容の薬効・用法を説明、内容理解OK。一包化の朝食後分が4日分残っている。就寝前のセンノシドは自己判断で使っていない。腰の痛みは「貼ると楽」とのことで、貼付剤は使用できている。",
+    "a": "朝の飲み忘れは、飲むタイミングが生活の流れに合っていないことが原因と考えられる。便秘時のセンノシド使用の目安を本人が把握していない。",
+    "p": "服薬カレンダーを食卓の見える位置に設置。「3日出なければセンノシドを飲む」と紙に書いてお渡しした。残薬4日分は次回処方で日数調整を医師に提案する。ケアマネジャー様には、ヘルパー訪問時の服薬確認の声かけをご検討いただきたい。"
+  }
+}

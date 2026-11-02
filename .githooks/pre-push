@@ -1,0 +1,4 @@
+#!/bin/sh
+# プッシュ前に履歴全体の API キー形式・.env の追跡/追加を検査する（Claude Code 以外・PowerShell からの push も守る）
+# stdin（push 対象の ref 一覧）は guard-commit.mjs にそのまま渡る
+exec node "$(git rev-parse --show-toplevel)/.claude/hooks/guard-commit.mjs" --pre-push
