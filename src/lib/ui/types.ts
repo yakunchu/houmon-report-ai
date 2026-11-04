@@ -1,25 +1,23 @@
 /**
- * 画面で持つ「基本情報」の型と選択肢。
- * 薬局側の既存データ（レセコン相当）を手入力する欄。localStorage（端末内）にだけ保存し、
+ * 画面で持つ「基本情報」の型と選択肢（今回の訪問の作業用コピー）。
+ * 患者リスト（src/lib/patients）が患者ごとのマスターで、選ぶとここに読み込み、保存すると書き戻す。
+ * localStorage（端末内）にだけ保存し、
  * AI に送るのは buildContext() が選んだ項目だけ（氏名・住所・生年月日・宛名・薬局名は送らない）。
  */
+import type { FamilyMember } from "@/lib/patients/types";
 import type { RecipientType } from "@/lib/report/schema";
 
-/** 訪問頻度の選択肢（CLAUDE.md の表。「その他」は備考に「28日毎」のように書く） */
-export const VISIT_FREQUENCIES = ["1週間毎", "2週間毎", "1か月毎", "その他"] as const;
-
-/** 調剤形態の選択肢 */
-export const DISPENSING_FORMS = ["一包化（別包有）", "一包化（別包無）", "ヒート"] as const;
+/**
+ * 訪問頻度（「その他」は備考に「28日毎」のように書く）と調剤形態の選択肢。
+ * 正本は schema.ts（患者リストと会話からの提案でも同じ値を使う）。名前は互換のため残している。
+ */
+export { VISIT_FREQUENCY as VISIT_FREQUENCIES, DISPENSING_FORM as DISPENSING_FORMS } from "../report/schema";
 
 /** 性別（出力の患者欄に使う。任意） */
 export const SEX_OPTIONS = ["女性", "男性"] as const;
 
-export type FamilyMember = {
-  /** 実名（端末内のみ。マスク用） */
-  name: string;
-  /** 続柄（長女 など） */
-  relation: string;
-};
+/** 家族の実名と続柄（型は患者リストと同じ） */
+export type { FamilyMember };
 
 export type BasicInfo = {
   recipientType: RecipientType;

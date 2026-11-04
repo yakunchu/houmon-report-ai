@@ -3,7 +3,7 @@
 export type StepStatus = "done" | "current" | "todo";
 
 const STEPS = [
-  { n: "①", label: "基本情報", id: "step-1" },
+  { n: "①", label: "患者", id: "step-1" },
   { n: "②", label: "会話", id: "step-2" },
   { n: "③", label: "下書き", id: "step-3" },
   { n: "④", label: "出力", id: "step-4" },

@@ -4,9 +4,10 @@
  * - 備考・SOAP・昼寝の長さは文字 bigram の Jaccard 類似度（match は null＝人が判定）
  * - 残薬は件数と各件の「要確認」の一致で match、本文の類似度も出す
  * - 引用（S と evidence）は会話テキストに実在するかを別関数で確認する
+ * - basicInfoSuggestions（基本情報の提案）は合格ライン（選択式一致率）に含めず、別関数 compareSuggestions で見る
  */
 import { CHOICE_FIELDS, EVIDENCE_LABELS, REPORT_ORDER, SOAP_LABELS, type EvidenceKey } from "./fields";
-import { UNSURE, type Evidence, type LeftoverMedication, type ReportDraft } from "./schema";
+import { UNSURE, type BasicInfoSuggestions, type Evidence, type LeftoverMedication, type ReportDraft } from "./schema";
 
 export type CompareRow = {
   key: string;
@@ -19,6 +20,18 @@ export type CompareRow = {
   similarity: number | null;
   /** choice: 完全一致で判定する選択式（一致率の分母） / text: 人が判定 / list: 残薬 */
   kind: "choice" | "text" | "list";
+};
+
+/** 基本情報の提案の比較行。合格判定には使わない */
+export type SuggestionRow = {
+  key: string;
+  label: string;
+  expected: string;
+  actual: string;
+  /** 選択式は正規化一致。自由記述の欄は null */
+  match: boolean | null;
+  /** 自由記述（備考・家族）の文字 bigram 類似度。選択式は null */
+  similarity: number | null;
 };
 
 export type QuoteCheck = { quote: string; found: boolean };
@@ -107,8 +120,9 @@ function leftoverRow(expected: readonly LeftoverMedication[], actual: readonly L
   };
 }
 
-/** 見本と下書きを欄ごとに比較する。行の並びは報告書の並び（見本の順） */
-export function compareDraft(expected: Omit<ReportDraft, "evidence">, actual: Omit<ReportDraft, "evidence">): CompareRow[] {
+/** 見本と下書きを欄ごとに比較する。行の並びは報告書の並び（見本の順）。basicInfoSuggestions は見ない */
+type ComparableDraft = Omit<ReportDraft, "evidence" | "basicInfoSuggestions">;
+export function compareDraft(expected: ComparableDraft, actual: ComparableDraft): CompareRow[] {
   const rows: CompareRow[] = [];
   for (const def of REPORT_ORDER) {
     const label = def.label;
@@ -139,6 +153,33 @@ export function compareDraft(expected: Omit<ReportDraft, "evidence">, actual: Om
     }
   }
   return rows;
+}
+
+/** 基本情報の提案（訪問頻度・調剤形態・家族）を見本と比べる。選択式は正規化一致、備考と家族は bigram 類似度 */
+export function compareSuggestions(expected: BasicInfoSuggestions, actual: BasicInfoSuggestions): SuggestionRow[] {
+  const choice = (key: string, label: string, e: string, a: string): SuggestionRow => ({
+    key,
+    label,
+    expected: e,
+    actual: a,
+    match: normalizeValue(e) === normalizeValue(a),
+    similarity: null,
+  });
+  const text = (key: string, label: string, e: string, a: string): SuggestionRow => ({
+    key,
+    label,
+    expected: e,
+    actual: a,
+    match: null,
+    similarity: bigramJaccard(e, a),
+  });
+  return [
+    choice("visitFrequency.choice", "訪問頻度", expected.visitFrequency.choice, actual.visitFrequency.choice),
+    text("visitFrequency.note", "訪問頻度・備考", expected.visitFrequency.note, actual.visitFrequency.note),
+    choice("dispensingForm.choice", "調剤形態", expected.dispensingForm.choice, actual.dispensingForm.choice),
+    text("dispensingForm.note", "調剤形態・備考", expected.dispensingForm.note, actual.dispensingForm.note),
+    text("family", "家族", expected.family, actual.family),
+  ];
 }
 
 /** 「」で区切った引用を取り出す。「」が無ければ全体を 1 件の引用とみなす */

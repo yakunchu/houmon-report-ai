@@ -3,9 +3,11 @@
  *
  *   npm run eval                      # API を 1 回呼ぶ（費用あり）
  *   npm run eval -- --dry-run         # API を呼ばず、送る内容の要約だけ表示
+ *   npm run eval -- --new-patient     # 基本情報（頻度・調剤形態・管理者・方法・家族）を空にして送る（新しい患者の想定）
  *   npm run eval -- --recipient=医療機関 --fixture=fixtures/yamamoto-hanako --note=メモ
  *
  * 結果は eval-results/ に JSON で保存し、history.md に 1 行追記する（--dry-run では何も保存しない）。
+ * 「基本情報の提案」の表は参考表示で、合格判定（終了コード）には使わない。
  * 実在の患者データは使わない。fixtures は架空データ。
  */
 import { mkdirSync, readFileSync, writeFileSync, existsSync, appendFileSync } from "node:fs";
@@ -15,9 +17,18 @@ import { getModelConfig } from "../src/lib/claude/client";
 import { REPORT_RULES } from "../src/lib/prompt/rules.generated";
 import { draftReport } from "../src/lib/report/draft";
 import { buildUserMessage } from "../src/lib/report/prompt";
-import { checkEvidence, checkQuotes, compareDraft, summarize, type CompareRow } from "../src/lib/report/compare";
+import {
+  checkEvidence,
+  checkQuotes,
+  compareDraft,
+  compareSuggestions,
+  summarize,
+  type CompareRow,
+  type SuggestionRow,
+} from "../src/lib/report/compare";
 import { EVIDENCE_LABELS, listUnsureFields } from "../src/lib/report/fields";
 import {
+  BasicInfoSuggestionsSchema,
   RECIPIENT_TYPES,
   ReportDraftSchema,
   UNSURE,
@@ -29,12 +40,13 @@ import {
 const MASK_TOKEN = "【患者A】";
 
 // ---------- 引数 ----------
-type Args = { recipient: RecipientType; dryRun: boolean; fixture: string; note: string };
+type Args = { recipient: RecipientType; dryRun: boolean; fixture: string; note: string; newPatient: boolean };
 
 function parseArgs(argv: string[]): Args {
-  const args: Args = { recipient: "ケアマネ", dryRun: false, fixture: "fixtures/yamamoto-hanako", note: "" };
+  const args: Args = { recipient: "ケアマネ", dryRun: false, fixture: "fixtures/yamamoto-hanako", note: "", newPatient: false };
   for (const a of argv) {
     if (a === "--dry-run") args.dryRun = true;
+    else if (a === "--new-patient") args.newPatient = true;
     else if (a.startsWith("--recipient=")) {
       const v = a.slice("--recipient=".length);
       if (!(RECIPIENT_TYPES as readonly string[]).includes(v)) {
@@ -73,11 +85,24 @@ function extractConversation(markdown: string): string {
   return lines.length > 0 ? lines.join("\n") : markdown.trim();
 }
 
-/** profile → DraftContext。処方医名・医療機関名・患者名・宛先名は入れない */
-function buildContext(p: Profile): DraftContext {
+/**
+ * profile → DraftContext。処方医名・医療機関名・患者名・宛先名は入れない。
+ * newPatient のときは基本情報 5 項目を空にする（新しい患者の登録＝提案が埋まるかを見る。処方内容は残す）
+ */
+function buildContext(p: Profile, newPatient: boolean): DraftContext {
   const vf = p.visitFrequency;
   const lines = p.prescription.items.map((i) => `${i.drug} ${i.dose} ${i.usage} ${i.days}`);
   lines.push(`併用薬: ${p.prescription.concomitant}`);
+  if (newPatient) {
+    return {
+      visitFrequency: "",
+      dispensingForm: "",
+      currentMedicationManager: "",
+      currentManagementMethod: "",
+      family: "",
+      prescription: lines.join("\n"),
+    };
+  }
   return {
     visitFrequency: vf.note ? `${vf.choice}（${vf.note}）` : vf.choice,
     dispensingForm: p.dispensingForm,
@@ -126,7 +151,7 @@ function cell(s: string): string {
   return (s === "" ? "—" : s).replace(/\|/g, "\\|").replace(/\r?\n/g, "<br>");
 }
 
-function judge(r: CompareRow): string {
+function judge(r: CompareRow | SuggestionRow): string {
   const parts: string[] = [];
   if (r.match !== null) parts.push(r.match ? "○一致" : "×不一致");
   if (r.similarity !== null) parts.push(`類似度 ${r.similarity.toFixed(2)}`);
@@ -154,14 +179,18 @@ async function main(): Promise<number> {
   const fixtureName = basename(dir);
 
   const profile = ProfileSchema.parse(JSON.parse(readFileSync(resolve(dir, "profile.json"), "utf8")));
-  const expected = ReportDraftSchema.omit({ evidence: true }).parse(
-    JSON.parse(readFileSync(resolve(dir, "expected.json"), "utf8")),
-  );
+  const expectedJson: unknown = JSON.parse(readFileSync(resolve(dir, "expected.json"), "utf8"));
+  // 提案の見本は任意（無い古い見本でも動く）。合格ラインの比較（compareDraft）には含めない
+  const expected = ReportDraftSchema.omit({ evidence: true, basicInfoSuggestions: true }).parse(expectedJson);
+  const expectedSuggestions =
+    typeof expectedJson === "object" && expectedJson !== null && "basicInfoSuggestions" in expectedJson
+      ? BasicInfoSuggestionsSchema.parse((expectedJson as { basicInfoSuggestions: unknown }).basicInfoSuggestions)
+      : null;
   const rawTranscript = extractConversation(readFileSync(resolve(dir, "transcript.md"), "utf8"));
 
   const transcript = simpleMask(rawTranscript, profile.patient);
   assertNoName(transcript, profile.patient, "マスク後の会話");
-  const context = buildContext(profile);
+  const context = buildContext(profile, args.newPatient);
   const request: DraftRequest = { recipientType: args.recipient, transcript, context };
   const userMessage = buildUserMessage(request);
   assertNoName(userMessage, profile.patient, "送信するメッセージ");
@@ -170,6 +199,7 @@ async function main(): Promise<number> {
   const requestSummary = {
     fixture: fixtureName,
     recipientType: args.recipient,
+    newPatient: args.newPatient,
     systemChars: REPORT_RULES.length,
     userMessageChars: userMessage.length,
     transcriptChars: transcript.length,
@@ -181,15 +211,18 @@ async function main(): Promise<number> {
 
   if (args.dryRun) {
     console.log("# dry-run（API は呼びません）\n");
-    console.log(`- フィクスチャ: ${fixtureName} / 宛先: ${args.recipient}`);
+    console.log(
+      `- フィクスチャ: ${fixtureName} / 宛先: ${args.recipient} / 新しい患者モード: ${args.newPatient ? "あり（基本情報 5 項目を空で送る）" : "なし"}`,
+    );
     console.log(`- model: ${model} / effort: ${effort}`);
     console.log(`- system: ${requestSummary.systemChars} 文字（cache_control: ephemeral）`);
     console.log(`- ユーザーメッセージ: ${requestSummary.userMessageChars} 文字`);
     console.log(`- 会話テキスト（マスク後）: ${requestSummary.transcriptChars} 文字 / ${MASK_TOKEN} への置換 ${requestSummary.maskedTokenCount} 箇所`);
     console.log("- 患者の姓・名の残存: なし（確認済み）\n");
-    console.log("## ユーザーメッセージ先頭 300 文字\n");
+    console.log("## ユーザーメッセージの「基本情報」の節\n");
     console.log("```");
-    console.log(userMessage.slice(0, 300));
+    const basic = userMessage.split("\n## ").find((s) => s.startsWith("基本情報"));
+    console.log(basic ? `## ${basic.trimEnd()}` : userMessage.slice(0, 300));
     console.log("```");
     return 0;
   }
@@ -220,6 +253,7 @@ async function main(): Promise<number> {
   const actual = res.draft;
   const rows = compareDraft(expected, actual);
   const sum = summarize(rows);
+  const suggestionRows = expectedSuggestions ? compareSuggestions(expectedSuggestions, actual.basicInfoSuggestions) : null;
   const sQuotes = checkQuotes(actual.soap.s, transcript);
   const evQuotes = checkEvidence(actual.evidence, transcript);
   const nameLeak = (() => {
@@ -244,6 +278,20 @@ async function main(): Promise<number> {
 
   console.log(`\n## 選択式一致率\n\n${sum.matched}/${sum.total}（${Math.round(sum.rate * 100)}%）` + (sum.mismatched.length ? ` 不一致: ${sum.mismatched.join("、")}` : ""));
 
+  console.log("\n## 基本情報の提案（参考。合格判定には使わない）\n");
+  if (suggestionRows) {
+    console.log("| 欄 | 見本 | 実際 | 一致 / 類似度 |");
+    console.log("|---|---|---|---|");
+    for (const r of suggestionRows) console.log(`| ${cell(r.label)} | ${cell(r.expected)} | ${cell(r.actual)} | ${judge(r)} |`);
+  } else {
+    const s = actual.basicInfoSuggestions;
+    const withNote = (c: string, n: string) => (n ? `${c}（${n}）` : c);
+    console.log("- この見本には basicInfoSuggestions がありません（実際の提案のみ表示）");
+    console.log(
+      `- 訪問頻度: ${withNote(s.visitFrequency.choice, s.visitFrequency.note)} / 調剤形態: ${withNote(s.dispensingForm.choice, s.dispensingForm.note)} / 家族: ${s.family || "—"}`,
+    );
+  }
+
   console.log("\n## S の引用の実在");
   for (const q of sQuotes) console.log(`- ${q.found ? "○ あり" : "× なし"}: 「${q.quote}」`);
   if (sQuotes.length === 0) console.log("- × 引用なし（S が空、または引用にできる文字がありません）");
@@ -263,11 +311,11 @@ async function main(): Promise<number> {
   // --- 保存 ---
   writeFileSync(
     resolve(root, "eval-results", `${stem}.json`),
-    JSON.stringify({ request: requestSummary, response: res, comparison: { rows, summary: sum, sQuotes, evidenceQuotes: evQuotes, unsure, nameLeak } }, null, 2) + "\n",
+    JSON.stringify({ request: requestSummary, response: res, comparison: { rows, summary: sum, suggestions: { expected: expectedSuggestions, actual: actual.basicInfoSuggestions, rows: suggestionRows }, sQuotes, evidenceQuotes: evQuotes, unsure, nameLeak } }, null, 2) + "\n",
     "utf8",
   );
   const sFound = `${sQuotes.filter((q) => q.found).length}/${sQuotes.length}${sQuotes.length === 0 ? " (S空)" : ""}`;
-  const memo = [`宛先=${args.recipient}`, `fixture=${fixtureName}`, args.note].filter(Boolean).join(" ").replace(/\|/g, "/");
+  const memo = [`宛先=${args.recipient}`, `fixture=${fixtureName}`, args.newPatient ? "new-patient" : "", args.note].filter(Boolean).join(" ").replace(/\|/g, "/");
   appendHistory(
     root,
     `| ${ts.text} | ${model} | ${effort} | ${sum.matched}/${sum.total} (${Math.round(sum.rate * 100)}%) | ${sFound} | ${sec} | ${u.inputTokens}/${u.outputTokens} | ${memo} |`,

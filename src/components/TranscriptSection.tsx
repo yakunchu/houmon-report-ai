@@ -49,6 +49,9 @@ export function TranscriptSection({
   basicFilled,
   ackNoPatient,
   onAckNoPatientChange,
+  ackWarnings,
+  onAckWarningsChange,
+  onAddMaskWord,
 }: {
   transcript: string;
   onTranscriptChange: (v: string) => void;
@@ -69,10 +72,17 @@ export function TranscriptSection({
   /** 患者名が会話に見つからないまま送ることを了承した */
   ackNoPatient: boolean;
   onAckNoPatientChange: (v: boolean) => void;
+  /** 名前らしい語の警告が残ったまま送ることを了承した */
+  ackWarnings: boolean;
+  onAckWarningsChange: (v: boolean) => void;
+  /** 警告の語を辞書（家族の氏名 / その他の語）に足して、マスクし直す */
+  onAddMaskWord: (text: string, kind: "family" | "other") => void;
 }) {
   const noPatientToken = maskResult !== null && !maskResult.tokens.some((t) => t.kind === "patient");
-  // 患者の氏名が未入力なら送れない。入力済みでも会話に患者名が1件も見つからないときは、了承が要る
-  const canDraft = maskResult !== null && !maskStale && basicFilled && (!noPatientToken || ackNoPatient);
+  const hasWarnings = maskResult !== null && maskResult.warnings.length > 0;
+  // 患者の氏名が未入力なら送れない。会話に患者名が1件も見つからないとき、名前らしい語の警告が残っているときは、了承が要る
+  const canDraft =
+    maskResult !== null && !maskStale && basicFilled && (!noPatientToken || ackNoPatient) && (!hasWarnings || ackWarnings);
   const ready = canDraft;
   return (
     <Section id="step-2" title="② 会話">
@@ -145,15 +155,34 @@ export function TranscriptSection({
                 置き換えられなかった個人情報らしい箇所（{maskResult.warnings.length}件）
               </h3>
               <p className="mb-2 text-amber-950">
-                人の名前かもしれません。基本情報の「その他マスクしたい語」や家族の氏名に足すと、置き換えられます。
+                人の名前かもしれません。辞書に足すと記号に置き換わります（家族の氏名なら「家族として登録」、医療機関名・事業所名・それ以外の人名なら「その他の語として登録」）。人名でなければ下のチェックを入れて進めます。
               </p>
-              <ul className="space-y-1">
+              <ul className="space-y-2">
                 {maskResult.warnings.map((w, i) => (
-                  <li key={i} className="font-bold text-amber-950">
-                    「{w.text}」 <span className="font-normal">… {w.reason}</span>
+                  <li key={i} className="rounded-lg border border-amber-700 bg-white p-2">
+                    <p className="font-bold text-amber-950">
+                      「{w.text}」 <span className="font-normal">… {w.reason}</span>
+                    </p>
+                    <div className="mt-2 flex flex-wrap gap-2">
+                      <Button onClick={() => onAddMaskWord(w.text, "family")} disabled={drafting || maskStale}>
+                        家族として登録
+                      </Button>
+                      <Button onClick={() => onAddMaskWord(w.text, "other")} disabled={drafting || maskStale}>
+                        その他の語として登録
+                      </Button>
+                    </div>
                   </li>
                 ))}
               </ul>
+              <label className="mt-3 flex min-h-12 cursor-pointer items-center gap-3 font-bold text-amber-950">
+                <input
+                  type="checkbox"
+                  className="h-6 w-6"
+                  checked={ackWarnings}
+                  onChange={(e) => onAckWarningsChange(e.target.checked)}
+                />
+                残っている語は人の名前ではないことを確認した。それでも送る
+              </label>
             </div>
           ) : null}
 

@@ -66,6 +66,16 @@ export function UnsureBadge({ text = "要確認" }: { text?: string }) {
   );
 }
 
+/** 「AI の提案（会話から）」バッジ。会話から自動入力した項目に付ける（「要確認」とは別。確認は薬剤師が行う） */
+export function AiBadge({ text = "AI の提案（会話から）" }: { text?: string }) {
+  return (
+    <span className="inline-flex items-center gap-1 rounded-md border-2 border-blue-800 bg-blue-50 px-2 py-0.5 text-base font-bold text-blue-950">
+      <span aria-hidden="true">✦</span>
+      {text}
+    </span>
+  );
+}
+
 /** 原文にない引用などの警告表示 */
 export function WarnText({ children }: { children: ReactNode }) {
   return (

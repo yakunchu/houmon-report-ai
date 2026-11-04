@@ -27,6 +27,10 @@ export const TENDENCY = ["特になし", "有"] as const;
 export const RECIPIENT_TYPES = ["医療機関", "ケアマネ", "その他"] as const;
 export type RecipientType = (typeof RECIPIENT_TYPES)[number];
 
+/** 基本情報の選択肢（患者リストの記録と、会話からの提案の両方で使う） */
+export const VISIT_FREQUENCY = ["1週間毎", "2週間毎", "1か月毎", "その他"] as const;
+export const DISPENSING_FORM = ["一包化（別包有）", "一包化（別包無）", "ヒート"] as const;
+
 const NOTE_DESC = "備考。選択肢で表しきれない補足を短く（例: 週3回程度、夜間2回）。会話に根拠が無ければ空文字";
 
 function choiceField<const T extends readonly [string, ...string[]]>(options: T, label: string) {
@@ -60,6 +64,17 @@ export const EvidenceSchema = z.object({
   tendency: z.string().describe("日常でみられる傾向の根拠の引用"),
 });
 
+/**
+ * 会話から読み取れた基本情報の提案。新しい患者の登録時に、空欄を埋める候補として使う（薬剤師が確認して保存）。
+ * 会話にはっきり出ている場合だけ埋め、無ければ「要確認」／空文字。報告書の合格ラインには含めない。
+ */
+export const BasicInfoSuggestionsSchema = z.object({
+  visitFrequency: choiceField(VISIT_FREQUENCY, "訪問頻度（会話に出ていれば。「その他」のときは備考に間隔、例: 28日毎）"),
+  dispensingForm: choiceField(DISPENSING_FORM, "調剤形態（会話に出ていれば）"),
+  family: z.string().describe("家族構成・関与。続柄だけで書く（例: 長女が週末に服薬を確認）。会話に無ければ空文字"),
+});
+export type BasicInfoSuggestions = z.infer<typeof BasicInfoSuggestionsSchema>;
+
 /** AI が返す下書き全体。プロパティの順は報告書ソフトの欄の並び（見本の順）に合わせている */
 export const ReportDraftSchema = z.object({
   medicationManager: choiceField(MEDICATION_MANAGER, "服薬管理者"),
@@ -89,6 +104,7 @@ export const ReportDraftSchema = z.object({
   dailyTendency: choiceField(TENDENCY, "日常でみられる傾向"),
   soap: SoapSchema,
   evidence: EvidenceSchema,
+  basicInfoSuggestions: BasicInfoSuggestionsSchema,
 });
 
 export type ReportDraft = z.infer<typeof ReportDraftSchema>;

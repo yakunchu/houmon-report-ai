@@ -1,10 +1,15 @@
-/** ① 基本情報（折りたたみ可）。薬局側の既存データを入力する。端末内にだけ保存する */
+/**
+ * ① 患者（折りたたみ可）。上に患者リスト（top）、下に今回の訪問の作業用コピー（基本情報）の入力欄。
+ * 端末内にだけ保存する。
+ */
 import type { ReactNode } from "react";
+import type { Group as PatientGroup, GroupId } from "@/lib/patients";
 import { RECIPIENT_TYPES } from "@/lib/report/schema";
 import { MEDICATION_MANAGER, MANAGEMENT_METHOD } from "@/lib/report/schema";
 import { isBasicFilled } from "@/lib/ui/basic-info";
+import type { AiField } from "@/lib/ui/suggestions";
 import { DISPENSING_FORMS, SEX_OPTIONS, VISIT_FREQUENCIES, type BasicInfo } from "@/lib/ui/types";
-import { Button, ChoiceButtons, Field, Section, inputClass } from "./ui";
+import { AiBadge, Button, ChoiceButtons, Field, Section, inputClass } from "./ui";
 
 function Group({ title, children }: { title: string; children: ReactNode }) {
   return (
@@ -15,6 +20,16 @@ function Group({ title, children }: { title: string; children: ReactNode }) {
   );
 }
 
+/** ラベル + 「AI の提案（会話から）」バッジ（会話から自動入力した項目だけ） */
+function LabelWithBadge({ text, ai }: { text: string; ai: boolean }) {
+  return (
+    <span className="mb-1 flex flex-wrap items-center gap-2 font-bold">
+      {text}
+      {ai ? <AiBadge /> : null}
+    </span>
+  );
+}
+
 export function BasicInfoSection({
   basic,
   onChange,
@@ -22,32 +37,49 @@ export function BasicInfoSection({
   onToggle,
   onLoadSample,
   onClearSaved,
+  onClearEverything,
+  top,
+  groups,
+  groupIds,
+  onGroupIdsChange,
+  aiFields,
 }: {
   basic: BasicInfo;
   onChange: (next: BasicInfo) => void;
   open: boolean;
   onToggle: () => void;
   onLoadSample: () => void;
+  /** 作業中の入力（基本情報・会話・下書き）を消す。患者リストは残す */
   onClearSaved: () => void;
+  /** 患者リストも含めて、この端末の保存をすべて消す */
+  onClearEverything: () => void;
+  /** 患者リスト（PatientPicker など）。見出しの下に置く */
+  top: ReactNode;
+  /** グループの一覧と、いまの患者が入っているグループ */
+  groups: PatientGroup[];
+  groupIds: GroupId[];
+  onGroupIdsChange: (next: GroupId[]) => void;
+  /** 会話から自動入力した項目（バッジを付ける） */
+  aiFields: readonly AiField[];
 }) {
   const set = (patch: Partial<BasicInfo>) => onChange({ ...basic, ...patch });
   const patientName = [basic.patientFamilyName, basic.patientGivenName].filter(Boolean).join(" ");
+  const ai = (f: AiField) => aiFields.includes(f);
 
   return (
-    <Section id="step-1" title="① 基本情報">
-      <div className="flex flex-wrap items-center gap-3">
+    <Section id="step-1" title="① 患者">
+      {top}
+      <div className="mt-4 flex flex-wrap items-center gap-3">
         <Button onClick={onToggle} aria-expanded={open} aria-controls="basic-body">
-          {open ? "▲ 閉じる" : "▼ 開いて入力・修正する"}
+          {open ? "▲ 基本情報を閉じる" : "▼ 基本情報を開いて入力・修正する"}
         </Button>
-        <Button variant="primary" onClick={onLoadSample}>
-          架空サンプル（山本花子さん）を読み込む
-        </Button>
+        <Button onClick={onLoadSample}>架空サンプル（山本花子さん）を読み込む</Button>
       </div>
       {!open ? (
         <p className="mt-3 text-slate-800">
           {isBasicFilled(basic)
             ? `${patientName} さん ／ ${basic.recipientType}宛 ／ ${basic.pharmacy || "薬局名なし"}`
-            : "まだ入力されていません。"}
+            : "まだ入力されていません。患者を選ぶか、「＋ 新しい患者」を押してください。"}
         </p>
       ) : null}
 
@@ -55,7 +87,7 @@ export function BasicInfoSection({
         <div id="basic-body">
           <p className="mt-4 rounded-lg bg-slate-100 px-3 py-2 text-slate-900">
             この画面の内容は、この端末のブラウザの中にだけ保存されます。氏名・住所・生年月日・宛名・薬局名は、AIには送りません
-            （氏名などは記号に置き換えてから送ります）。
+            （氏名などは記号に置き換えてから送ります）。患者リストの記録を直したときは、上の「患者リストに保存」を押してください。
           </p>
 
           <Group title="宛先">
@@ -148,12 +180,46 @@ export function BasicInfoSection({
                 autoComplete="off"
               />
             </Field>
+            <fieldset className="min-w-0">
+              <legend className="mb-1 font-bold">グループ（患者リストの絞り込み・並びに使います）</legend>
+              {groups.length === 0 ? (
+                <p className="text-slate-800">グループがありません。患者リストの「グループを管理」で作れます。</p>
+              ) : (
+                <div className="flex flex-wrap gap-2">
+                  {groups.map((g) => {
+                    const checked = groupIds.includes(g.id);
+                    return (
+                      <label
+                        key={g.id}
+                        className={`flex min-h-12 cursor-pointer select-none items-center gap-2 rounded-lg border-2 px-4 py-2 text-lg font-bold has-[:focus-visible]:outline-4 has-[:focus-visible]:outline-offset-2 has-[:focus-visible]:outline-blue-700 ${
+                          checked
+                            ? "border-blue-800 bg-blue-800 text-white"
+                            : "border-slate-500 bg-white text-slate-900 hover:bg-slate-100"
+                        }`}
+                      >
+                        <input
+                          type="checkbox"
+                          className="size-6 shrink-0 accent-blue-900"
+                          checked={checked}
+                          onChange={() =>
+                            onGroupIdsChange(checked ? groupIds.filter((id) => id !== g.id) : [...groupIds, g.id])
+                          }
+                        />
+                        {g.name}
+                      </label>
+                    );
+                  })}
+                </div>
+              )}
+            </fieldset>
           </Group>
 
           <Group title="家族">
-            <Field label="家族構成・関与（続柄のみ。AIに送ります）" hint="氏名は書かないでください（例: 長女（別居。週末に様子を見に来る））">
+            <label className="block">
+              <LabelWithBadge text="家族構成・関与（続柄のみ。AIに送ります）" ai={ai("family")} />
+              <span className="mb-1 block text-slate-700">氏名は書かないでください（例: 長女（別居。週末に様子を見に来る））</span>
               <input className={inputClass} value={basic.family} onChange={(e) => set({ family: e.target.value })} />
-            </Field>
+            </label>
             <div>
               <p className="mb-1 font-bold">家族の氏名と続柄（マスク用・端末内のみ）</p>
               <div className="space-y-2">
@@ -211,7 +277,7 @@ export function BasicInfoSection({
 
           <Group title="訪問・調剤・服薬管理（記録上の内容）">
             <div>
-              <span className="mb-1 block font-bold">訪問頻度</span>
+              <LabelWithBadge text="訪問頻度" ai={ai("visitFrequency")} />
               <ChoiceButtons
                 name="visitFrequency"
                 label="訪問頻度"
@@ -221,18 +287,19 @@ export function BasicInfoSection({
               />
               {basic.visitFrequency === "その他" ? (
                 <div className="mt-2">
-                  <Field label="その他の内容（例: 28日毎）">
+                  <label className="block">
+                    <LabelWithBadge text="その他の内容（例: 28日毎）" ai={ai("visitFrequencyNote")} />
                     <input
                       className={inputClass}
                       value={basic.visitFrequencyNote}
                       onChange={(e) => set({ visitFrequencyNote: e.target.value })}
                     />
-                  </Field>
+                  </label>
                 </div>
               ) : null}
             </div>
             <div>
-              <span className="mb-1 block font-bold">調剤形態</span>
+              <LabelWithBadge text="調剤形態" ai={ai("dispensingForm")} />
               <ChoiceButtons
                 name="dispensingForm"
                 label="調剤形態"
@@ -242,7 +309,7 @@ export function BasicInfoSection({
               />
             </div>
             <div>
-              <span className="mb-1 block font-bold">記録上の服薬管理者（空欄可）</span>
+              <LabelWithBadge text="記録上の服薬管理者（空欄可）" ai={ai("currentMedicationManager")} />
               <ChoiceButtons
                 name="currentMedicationManager"
                 label="記録上の服薬管理者"
@@ -252,7 +319,7 @@ export function BasicInfoSection({
               />
             </div>
             <div>
-              <span className="mb-1 block font-bold">記録上の管理方法（空欄可）</span>
+              <LabelWithBadge text="記録上の管理方法（空欄可）" ai={ai("currentManagementMethod")} />
               <ChoiceButtons
                 name="currentManagementMethod"
                 label="記録上の管理方法"
@@ -294,8 +361,8 @@ export function BasicInfoSection({
             </Field>
           </Group>
 
-          <Group title="薬局・日付">
-            <Field label="薬局名・薬剤師名">
+          <Group title="薬局・今回の訪問の日付（患者の記録には入りません）">
+            <Field label="薬局名・薬剤師名" hint="この端末の設定です。患者を切り替えても保たれます">
               <input className={inputClass} value={basic.pharmacy} onChange={(e) => set({ pharmacy: e.target.value })} />
             </Field>
             <div className="grid gap-4 sm:grid-cols-2">
@@ -342,9 +409,12 @@ export function BasicInfoSection({
             </Field>
           </Group>
 
-          <div className="mt-6">
+          <div className="mt-6 flex flex-wrap gap-3">
             <Button variant="danger" onClick={onClearSaved}>
-              この端末に保存した入力をすべて消す
+              作業中の入力（基本情報・会話・下書き）を消す
+            </Button>
+            <Button variant="danger" onClick={onClearEverything}>
+              患者リストも含めて、この端末の保存をすべて消す
             </Button>
           </div>
         </div>

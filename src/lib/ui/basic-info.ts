@@ -1,7 +1,7 @@
 /**
  * 基本情報（BasicInfo）から、マスク辞書・API に送る文脈・出力用ヘッダーを組み立てる純関数。
  */
-import { maskText } from "@/lib/mask";
+import { maskText } from "../mask";
 import type { DraftContext } from "@/lib/report/schema";
 import type { MaskToken, MaskWarning, PersonalInfoDictionary } from "@/lib/mask/types";
 import type { FixedFields, ReportHeader } from "@/lib/report/format";

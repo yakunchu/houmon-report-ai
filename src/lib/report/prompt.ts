@@ -12,9 +12,17 @@ export function buildSystemBlocks(): Anthropic.TextBlockParam[] {
   return [{ type: "text", text: REPORT_RULES, cache_control: { type: "ephemeral" } }];
 }
 
-/** 空文字は「（記録なし）」と明示する（空欄のままだと読み落としやすいため） */
+/** 空文字は「（記録なし）」と明示する（空欄のままだと読み落としやすいため）。処方内容に使う */
 function orNone(value: string): string {
   return value.trim() === "" ? "（記録なし）" : value.trim();
+}
+
+/** 基本情報が空のときの表記。新しい患者では会話から提案してもらう（入れる先の欄を明示する） */
+const UNREGISTERED_SUGGEST = "未登録（会話から分かれば basicInfoSuggestions に提案）";
+const UNREGISTERED_FIELD = "未登録（会話から分かれば、報告書の服薬管理者・管理方法の欄で選ぶ）";
+
+function orUnregistered(value: string, hint: string = UNREGISTERED_SUGGEST): string {
+  return value.trim() === "" ? hint : value.trim();
 }
 
 export function buildUserMessage(req: DraftRequest): string {
@@ -24,11 +32,11 @@ export function buildUserMessage(req: DraftRequest): string {
     req.recipientType,
     "",
     "## 基本情報",
-    `- 訪問頻度: ${orNone(c.visitFrequency)}`,
-    `- 調剤形態: ${orNone(c.dispensingForm)}`,
-    `- 記録上の服薬管理者: ${orNone(c.currentMedicationManager)}`,
-    `- 記録上の管理方法: ${orNone(c.currentManagementMethod)}`,
-    `- 家族: ${orNone(c.family)}`,
+    `- 訪問頻度: ${orUnregistered(c.visitFrequency)}`,
+    `- 調剤形態: ${orUnregistered(c.dispensingForm)}`,
+    `- 記録上の服薬管理者: ${orUnregistered(c.currentMedicationManager, UNREGISTERED_FIELD)}`,
+    `- 記録上の管理方法: ${orUnregistered(c.currentManagementMethod, UNREGISTERED_FIELD)}`,
+    `- 家族: ${orUnregistered(c.family)}`,
     "",
     "## 処方内容",
     orNone(c.prescription),
