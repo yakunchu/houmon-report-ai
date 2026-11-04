@@ -24,6 +24,9 @@ const ips = Object.values(networkInterfaces())
   .map((a) => a.address);
 const host = ips[0] ?? "localhost";
 const caUrl = `http://${host}:${port}/rootCA.pem`;
+/** アプリ（https の開発サーバー）の URL。ポートは引数 2 つ目で変えられる（既定 3000） */
+const appPort = Number(process.argv[3] ?? 3000);
+const appUrl = `https://${host}:${appPort}`;
 
 const page = `<!doctype html><html lang="ja"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
 <title>開発用 CA の配布</title>
@@ -37,11 +40,15 @@ code{font-size:18px;background:#f1f5f9;padding:2px 6px;border-radius:4px}#qr{mar
 <li>Safari が「プロファイルをダウンロードしますか？」と聞くので <strong>許可</strong></li>
 <li>設定アプリ → 上部の「プロファイルがダウンロードされました」→ <strong>インストール</strong>（パスコード入力）</li>
 <li>設定 → 一般 → 情報 → <strong>証明書信頼設定</strong> → 「houmon-report-ai dev CA」を <strong>ON</strong>（ルート証明書を全面的に信頼）</li>
-<li>Safari で <code>https://${host}:3000</code> を開く → 鍵マークが出れば完了</li>
+<li>Safari で <code>${appUrl}</code> を開く → 鍵マークが出れば完了</li>
 </ol>
+<h2>アプリを開く（証明書を入れたあと）</h2>
+<div id="qr-app"></div>
+<p><code>${appUrl}</code></p>
 <p>使い終わったら、PC 側でこのサーバーを Ctrl+C で止めてください。</p>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
-<script>new QRCode(document.getElementById("qr"),{text:${JSON.stringify(caUrl)},width:280,height:280,correctLevel:QRCode.CorrectLevel.M});</script>
+<script>new QRCode(document.getElementById("qr"),{text:${JSON.stringify(caUrl)},width:280,height:280,correctLevel:QRCode.CorrectLevel.M});
+new QRCode(document.getElementById("qr-app"),{text:${JSON.stringify(appUrl)},width:280,height:280,correctLevel:QRCode.CorrectLevel.M});</script>
 </body></html>`;
 
 createServer((req, res) => {
