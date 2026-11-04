@@ -14,3 +14,4 @@ export {
 } from "./store";
 export { patientsInGroup, sortByKana } from "./sort";
 export { calcAge, formatBirthDate, normalizeKana, searchPatients } from "./search";
+export { exportFileName, exportStore, mergeStores, parseExport } from "./transfer";

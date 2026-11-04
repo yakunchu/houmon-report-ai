@@ -72,6 +72,7 @@ import {
   type SuggestionItem,
 } from "@/lib/ui/suggestions";
 import { type BasicInfo } from "@/lib/ui/types";
+import { WarnText } from "./ui";
 import { BasicInfoSection } from "./BasicInfoSection";
 import { DraftSection } from "./DraftSection";
 import { OutputSection } from "./OutputSection";
@@ -185,6 +186,8 @@ function ReportAppInner() {
   const [leakWarning, setLeakWarning] = useState(false);
   const [finalizing, setFinalizing] = useState(false);
   const [confirmed, setConfirmed] = useState(false);
+  // 読み込みで作業中の患者の記録が更新されたが、作業用コピーに未保存の編集があって切り替えなかった
+  const [importStale, setImportStale] = useState(false);
 
   // 端末内に保存（失敗しても動く）
   useEffect(() => saveRaw("basic", JSON.stringify(basic)), [basic]);
@@ -405,6 +408,7 @@ function ReportAppInner() {
     setBasic(patientToBasicInfo(patient, visit));
     setAiFields([]);
     setNotice(null);
+    setImportStale(false);
   }
 
   /** 患者を切り替えたら、今回の訪問の報告日は今日に戻す（前の患者の日付を引き継がない） */
@@ -413,11 +417,13 @@ function ReportAppInner() {
   }
 
   function selectPatient(id: PatientId): void {
-    if (id === base.id && savedPatient) return;
+    const same = id === base.id && savedPatient !== null;
+    // 同じ患者を選び直したとき、未保存の変更が無ければ何もしない。あれば確認のうえ、患者リストの記録を読み直す
+    if (same && !dirty) return;
     const target = store.patients.find((p) => p.id === id);
     if (!target) return;
-    if (!confirmLeave(true)) return;
-    beginPatient(target, { ...store, selectedPatientId: id }, visitForSwitch(), true);
+    if (!confirmLeave(!same)) return;
+    beginPatient(target, { ...store, selectedPatientId: id }, same ? visitOf(basic) : visitForSwitch(), !same);
     setBasicOpen(false);
     scrollToId("step-2");
   }
@@ -443,6 +449,7 @@ function ReportAppInner() {
     const ok = saveStore(next);
     setStore(next);
     setBase(saved);
+    setImportStale(false);
     // 保存時にカナなどが正規化されたら、作業コピーも同じ値にそろえる（下書きは有効なまま残す）
     const normalized = patientToBasicInfo(saved, {
       recipientType: basic.recipientType,
@@ -476,6 +483,33 @@ function ReportAppInner() {
       const valid = b.groupIds.filter((id) => next.groups.some((g) => g.id === id));
       return valid.length === b.groupIds.length ? b : { ...b, groupIds: valid };
     });
+  }
+
+  /**
+   * 書き出し・読み込みの結果を適用する。
+   * 作業中の患者の記録が読み込みで変わったとき、作業用コピーとマスク辞書が古いままにならないようにする。
+   * 作業用コピーが未編集なら読み込み後の内容に入れ替え、編集済みなら入れ替えずに注意を出す（黙って上書きしない）。
+   */
+  function handleImport(next: PatientStore): void {
+    const updated = next.patients.find((p) => p.id === base.id) ?? null;
+    const changed = savedPatient !== null && updated !== null && !isSamePatientContent(updated, savedPatient);
+    if (!changed || updated === null) {
+      handleStoreChange(next);
+      return;
+    }
+    if (dirty) {
+      handleStoreChange(next);
+      setImportStale(true);
+      return;
+    }
+    // 未編集: 読み込み後の内容に入れ替える。辞書が変わるのでマスク結果と下書きは捨てる（会話は残す）
+    resetWork();
+    setStore(next);
+    setBase(updated);
+    setBasic(patientToBasicInfo(updated, visitOf(basic)));
+    setAiFields([]);
+    setImportStale(false);
+    setNotice("読み込みで内容が更新されたため、作業中の入力を新しい内容に切り替えました。マスクと下書きはやり直してください。");
   }
 
   function handleGroupIdsChange(ids: GroupId[]): void {
@@ -530,6 +564,7 @@ function ReportAppInner() {
     setTranscript("");
     setAiFields([]);
     setNotice(null);
+    setImportStale(false);
     resetWork();
     setBasicOpen(true);
   }
@@ -616,6 +651,7 @@ function ReportAppInner() {
                   onSelect={selectPatient}
                   onNew={newPatient}
                   onStoreChange={handleStoreChange}
+                  onImport={handleImport}
                 />
                 <CurrentPatientBar
                   name={patientName}
@@ -627,6 +663,11 @@ function ReportAppInner() {
                   onSave={savePatient}
                   onDelete={deleteCurrent}
                 />
+                {importStale && dirty && savedPatient ? (
+                  <WarnText>
+                    読み込みで、この患者の記録が更新されました。いまの入力は古い内容のままです。そのまま保存すると読み込んだ内容を上書きします。読み込んだ内容を使うには、一覧でこの患者をもう一度選んでください（未保存の変更は消えます）。
+                  </WarnText>
+                ) : null}
               </>
             }
           />

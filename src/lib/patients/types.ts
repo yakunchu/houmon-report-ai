@@ -99,6 +99,52 @@ export type SortByKanaFn = (patients: Patient[]) => Patient[];
 /** フィルタとグループの並び設定を適用した表示順。manual のときは manualOrder → 残りはカナ順 */
 export type PatientsInGroupFn = (store: PatientStore, filter: GroupFilter) => Patient[];
 
+/* ---- transfer.ts（書き出し・読み込み。iPhone と PC で患者リストを共有する） ---- */
+/**
+ * 書き出しファイルの中身。実名を含むので、端末どうし（AirDrop・USB など）で直接やり取りし、サーバーは介さない。
+ * 患者の id は端末ごとに違い得るので、読み込みでは「氏名 + 生年月日」で同じ人と判定し、グループは名前で突き合わせる。
+ */
+export type ExportFile = {
+  app: "houmon-report-ai";
+  kind: "patient-list";
+  version: 1;
+  /** ISO 8601 */
+  exportedAt: string;
+  patients: Patient[];
+  groups: Group[];
+};
+
+/** merge = 追加・更新（同じ人は updatedAt が新しい方を採用）、replace = 端末のリストを丸ごと置き換える */
+export type ImportMode = "merge" | "replace";
+
+export type ImportSummary = {
+  added: number;
+  updated: number;
+  unchanged: number;
+  groupsAdded: number;
+  /** 読み飛ばした行などの注意（id や氏名が無い患者 など） */
+  warnings: string[];
+};
+
+/** store を JSON 文字列にする（整形あり。selectedPatientId は含めない） */
+export type ExportStoreFn = (store: PatientStore, exportedAt: string) => string;
+/** ファイル名: houmon-report-ai_患者リスト_YYYYMMDD-HHMM.json */
+export type ExportFileNameFn = (exportedAt: string) => string;
+/**
+ * 文字列を検査して ExportFile にする。壊れた JSON・別アプリのファイル・version 違いは ok:false と日本語の理由。
+ * 形が不正な患者・グループは読み飛ばし、warnings にその旨を入れる（読み込み後の summary.warnings にも引き継ぐ）
+ */
+export type ParseExportFn = (text: string) => { ok: true; file: ExportFile; warnings: string[] } | { ok: false; message: string };
+/**
+ * 読み込みの適用（純関数。元の store は変更しない）。
+ * - merge: 氏名（姓・名）+ 生年月日が同じ患者は同じ人として、updatedAt が新しい方を採用（id は端末側を維持）。
+ *   それ以外は追加。グループは名前が同じなら同じグループ（id は端末側を維持）、無ければ追加。
+ *   読み込む患者の groupIds と各グループの manualOrder は、突き合わせ後の id に付け替える。
+ * - replace: 読み込んだ患者・グループで置き換える（selectedPatientId は null）。
+ * 戻り値の summary は画面の確認表示に使う（適用前に同じ関数で内訳を出し、確認後にその結果を保存する）。
+ */
+export type MergeStoresFn = (local: PatientStore, incoming: ExportFile, mode: ImportMode) => { store: PatientStore; summary: ImportSummary };
+
 /* ---- search.ts ---- */
 /**
  * 氏名・カナ・生年月日で部分一致検索（空の query は全員）。

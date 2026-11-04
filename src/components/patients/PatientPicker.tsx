@@ -22,6 +22,7 @@ import {
 } from "@/lib/patients";
 import { Button, inputClass } from "../ui";
 import { GroupManager } from "./GroupManager";
+import { TransferPanel } from "./TransferPanel";
 
 type Props = {
   store: PatientStore;
@@ -30,6 +31,8 @@ type Props = {
   onSelect: (id: PatientId) => void;
   onNew: () => void;
   onStoreChange: (next: PatientStore) => void;
+  /** 書き出し・読み込みで読み込んだ結果（作業中の患者が更新されることがあるため、通常の変更と分ける） */
+  onImport: (next: PatientStore) => void;
 };
 
 function fullName(p: Patient): string {
@@ -44,10 +47,11 @@ function filterButtonClass(selected: boolean): string {
   }`;
 }
 
-export function PatientPicker({ store, selectedId, onSelect, onNew, onStoreChange }: Props) {
+export function PatientPicker({ store, selectedId, onSelect, onNew, onStoreChange, onImport }: Props) {
   const [query, setQuery] = useState("");
   const [filterState, setFilter] = useState<GroupFilter>("all");
   const [manageOpen, setManageOpen] = useState(false);
+  const [transferOpen, setTransferOpen] = useState(false);
 
   // 削除されたグループが選ばれていたら「全員」に戻す
   const filter: GroupFilter =
@@ -79,13 +83,37 @@ export function PatientPicker({ store, selectedId, onSelect, onNew, onStoreChang
         <Button variant="primary" onClick={onNew}>
           ＋ 新しい患者
         </Button>
-        <Button onClick={() => setManageOpen((o) => !o)} aria-expanded={manageOpen}>
+        <Button
+          onClick={() => {
+            setManageOpen((o) => !o);
+            setTransferOpen(false);
+          }}
+          aria-expanded={manageOpen}
+        >
           グループを管理
+        </Button>
+        <Button
+          onClick={() => {
+            setTransferOpen((o) => !o);
+            setManageOpen(false);
+          }}
+          aria-expanded={transferOpen}
+        >
+          書き出し・読み込み
         </Button>
       </div>
 
       {manageOpen ? (
         <GroupManager store={store} onStoreChange={onStoreChange} onClose={() => setManageOpen(false)} />
+      ) : null}
+
+      {transferOpen ? (
+        <TransferPanel
+          store={store}
+          selectedId={selectedId}
+          onImport={onImport}
+          onClose={() => setTransferOpen(false)}
+        />
       ) : null}
 
       <label className="mt-4 block">

@@ -82,7 +82,7 @@ function strArr(v: unknown): string[] {
   return Array.isArray(v) ? v.filter((x): x is string => typeof x === "string") : [];
 }
 
-function sanitizePatient(raw: unknown, groupIds: Set<string>): Patient | null {
+export function sanitizePatient(raw: unknown, groupIds: Set<string>): Patient | null {
   if (!isObj(raw) || typeof raw.id !== "string" || raw.id === "") return null;
   const base = createEmptyPatient();
   const rec = isObj(raw.recipients) ? raw.recipients : {};
@@ -124,7 +124,7 @@ function sanitizePatient(raw: unknown, groupIds: Set<string>): Patient | null {
   };
 }
 
-function sanitizeGroup(raw: unknown): Group | null {
+export function sanitizeGroup(raw: unknown): Group | null {
   if (!isObj(raw) || typeof raw.id !== "string" || raw.id === "") return null;
   return {
     id: raw.id,
