@@ -1,0 +1,31 @@
+{
+  "_注意": "架空データ。医師宛（宛先＝医療機関）の見本。Claude（開発側）が台本から起こした案で、薬剤師（社長）の確認待ち。選択式は完全一致、備考と SOAP は人が見比べる。",
+  "fictional": true,
+  "medicationManager": { "choice": "家族", "note": "妻が配薬BOXにセット" },
+  "managementMethod": { "choice": "配薬BOX", "note": "" },
+  "adherence": { "choice": "悪", "note": "夕食後の飲み忘れ 週2回程度" },
+  "leftoverMedications": [
+    { "drugName": "夕食後の一包化分", "amount": "6日分", "note": "" }
+  ],
+  "mealAmount": { "choice": "小", "note": "食欲低下" },
+  "mealsPerDay": { "value": "2", "note": "朝食は摂らない" },
+  "swallowing": { "choice": "大体できる", "note": "大きい錠剤が飲みにくい" },
+  "urinationFrequency": { "choice": "多", "note": "夜間4回" },
+  "bowelMovement": { "choice": "下痢", "note": "1日3回 軟便" },
+  "daytimeSleep": { "choice": "無", "duration": "", "note": "" },
+  "nightSleep": { "choice": "不眠傾向あり", "note": "中途覚醒" },
+  "exercise": { "choice": "大体できる", "note": "家の中は伝い歩き" },
+  "mobility": { "choice": "あまりできない", "note": "外出は車いすで妻が介助" },
+  "dailyTendency": { "choice": "有", "note": "夕方テレビの前でうたた寝し、夕食後の薬を忘れる" },
+  "soap": {
+    "s": "「夕方はテレビの前でうとうとして、夜の薬ば忘れてしまう」「朝の薬ば飲んだ後、立つとふらっとする」",
+    "o": "処方内容の薬効・用法を説明、内容理解OK。夕食後の一包化分が6日分残っている。朝食後の服薬後に起立時のふらつきあり。夜間排尿4回。酸化マグネシウム錠は大きくて飲みにくく、便は1日3回の軟便。",
+    "a": "夕食後分の飲み忘れは、夕方のうたた寝で服薬のタイミングを逃していることが原因と考えられる。起立時のふらつきと夜間頻尿、軟便は薬の影響の可能性があり、処方内容の確認が必要と考えられる。",
+    "p": "配薬BOXの夕食後の段に目印を付け、妻に夕食後の声かけを依頼した。残薬6日分は次回処方で日数調整をご検討いただきたい。先生には、起立時のふらつきと夜間排尿4回について降圧薬・利尿薬の用量と服用時刻のご確認、酸化マグネシウム錠の飲みにくさと軟便について減量または剤形変更をご検討いただきたい。"
+  },
+  "basicInfoSuggestions": {
+    "visitFrequency": { "choice": "2週間毎", "note": "" },
+    "dispensingForm": { "choice": "要確認", "note": "" },
+    "family": "妻が配薬BOXにセットし、夕食後に声かけ"
+  }
+}

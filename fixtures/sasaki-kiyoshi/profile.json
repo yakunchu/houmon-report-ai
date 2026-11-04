@@ -1,0 +1,42 @@
+{
+  "_注意": "架空データ。実在の人物・医療機関とは関係ありません。医師宛（宛先＝医療機関）の報告を想定した 3 本目の台本の基本情報。",
+  "fictional": true,
+  "patient": {
+    "name": "佐々木 清",
+    "kana": "ササキ キヨシ",
+    "birthDate": "1943-02-10",
+    "age": 83,
+    "sex": "男性",
+    "address": "熊本県菊池市（架空）"
+  },
+  "family": "妻（同居。配薬BOXにセットし服薬を確認）",
+  "recipients": {
+    "careManager": "さくら居宅介護支援事業所　ケアマネジャー 林 由美 様",
+    "doctor": "ひまわり内科クリニック　内科 中村 俊介 先生御侍史"
+  },
+  "pharmacy": "ジロー薬局　薬剤師 前田 二郎",
+  "reportDate": "2026-11-06",
+  "visitDate": "2026-11-06",
+  "nextVisitDate": "2026-11-20",
+  "visitFrequency": { "choice": "2週間毎", "note": "" },
+  "dispensingForm": "一包化（別包無）",
+  "currentMedicationManager": "家族",
+  "currentManagementMethod": "配薬BOX",
+  "prescription": {
+    "date": "2026-11-06",
+    "prescriber": "ひまわり内科クリニック 内科 中村 俊介",
+    "items": [
+      { "drug": "アムロジピン錠 5mg", "dose": "1錠", "usage": "1日1回 朝食後", "days": "14日" },
+      { "drug": "フロセミド錠 20mg", "dose": "1錠", "usage": "1日1回 朝食後", "days": "14日" },
+      { "drug": "エソメプラゾールカプセル 20mg", "dose": "1カプセル", "usage": "1日1回 朝食後", "days": "14日" },
+      { "drug": "酸化マグネシウム錠 330mg", "dose": "2錠", "usage": "1日2回 朝夕食後", "days": "14日" },
+      { "drug": "ゾルピデム錠 5mg", "dose": "1錠", "usage": "1日1回 就寝前", "days": "14日" }
+    ],
+    "concomitant": "なし"
+  },
+  "fixedFields": {
+    "counselingTarget": "本人・家族（妻）",
+    "genericPreference": "後発医薬品での処方を希望する事を確認した。",
+    "medicineNotebook": "ご持参いただいたお薬手帳に、今回の処方内容を反映したシールを貼付。"
+  }
+}
