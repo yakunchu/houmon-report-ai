@@ -182,6 +182,7 @@
 3. iPhone に `rootCA.pem`（`mkcert -CAROOT` の場所）を AirDrop かメールで送って開く → 設定「プロファイルがダウンロードされました」からインストール → 設定 > 一般 > 情報 > 証明書信頼設定 で「ルート証明書を全面的に信頼」を ON（出典: mkcert README、Apple サポート 102390）。
 4. Safari で `https://192.168.1.112:3000` を開き、「この接続はプライベートではありません」の警告なしで開けること（＝CA が信頼されている）、ページメニュー → 「接続セキュリティの詳細」で発行者が houmon-report-ai dev CA と出ること、`window.isSecureContext` が true になること、マイク許可のダイアログが出ることを確認する。鍵マークは確認基準にしない（iOS 26・27 の Safari には出ない）。
 5. 録音の設計判断（§4-5）: Safari の `webkitSpeechRecognition` が端末内処理（`processLocally`）に対応しているかは未確認なので、まず `SpeechRecognition.available({ langs: ["ja-JP"], processLocally: true })` の戻り値を実機で確かめる。`unavailable` なら、録音は MediaRecorder で端末内に音声を残すだけにし、文字起こしは iPhone のキーボード音声入力（第1段階の経路）を使う方針に切り替える。サーバー送信型の音声認識は使わない。
+   **11/4 夜 実施**: iPhone で CA を信頼し、`https://192.168.1.112:3000` が警告なしで開けた（HTTPS OK）。この判断を実機で行うために**端末診断ページ `/diag`**（`src/app/diag/page.tsx`、`src/components/diag/DeviceDiag.tsx`、`src/lib/diag/device.ts`）を追加: 開いた URL と `isSecureContext`、`getUserMedia` の有無、`MediaRecorder` の対応形式、`SpeechRecognition` の有無、`processLocally` の指定可否、`available()`（端末内処理あり／なし）の戻り値、userAgent を表にし、ボタンで「マイク許可」「3 秒録音して再生」「端末内音声認識（processLocally を指定できる端末だけ）」を試せる。結果は文章にしてコピーできる。患者データは扱わない。noindex。
 6. 証明書の有効期限や IP 変更で開けなくなったときの復旧手順を README に書く。
 
 ---
