@@ -3,7 +3,9 @@ import type { ReactNode } from "react";
 import type { MaskResult, MaskToken } from "@/lib/mask/types";
 import type { DraftContext, HealthResponse } from "@/lib/report/schema";
 import { describeServer } from "@/lib/ui/health";
+import { appendTranscript } from "@/lib/ui/paste";
 import { DraftErrorPanel, type DraftErrorInfo } from "./DraftErrorPanel";
+import { PasteButton } from "./PasteButton";
 import { Button, Section, WarnText, inputClass } from "./ui";
 
 function escapeRegExp(s: string): string {
@@ -106,16 +108,30 @@ export function TranscriptSection({
   return (
     <Section id="step-2" title="② 会話">
       {!online ? <WarnText>オフラインです。Wi-Fi をご確認ください。つながるまで、下書きは作れません。</WarnText> : null}
+      <details className="mb-3 rounded-lg border-2 border-slate-300 bg-slate-50 p-3 text-slate-900">
+        <summary className="cursor-pointer text-lg font-bold">会話の入れ方（ボイスメモの文字起こし・音声入力）</summary>
+        <ul className="mt-2 list-disc space-y-1 pl-6">
+          <li>
+            録音した会話は、iPhone の<strong>ボイスメモ</strong>で「文字起こしを表示」→ 文字をコピー → 下の「クリップボードから貼り付け」。
+          </li>
+          <li>
+            その場で話して入れるなら、入力欄をタップしてキーボードの<strong>マイク</strong>（音声入力）。日本語の音声入力は iPhone
+            の中で処理されます（Apple の案内。無音が 30 秒続くと止まります）。
+          </li>
+          <li>このアプリは音声を録音も送信もしません。扱うのは文字だけで、送る前に氏名などを記号に置き換えます。</li>
+        </ul>
+      </details>
       <label className="block">
         <span className="mb-1 block font-bold">訪問中の会話（文字起こしを貼り付け）</span>
         <textarea
           className={`${inputClass} min-h-72 leading-8`}
           value={transcript}
           onChange={(e) => onTranscriptChange(e.target.value)}
-          placeholder="ここに会話を貼り付けます（スマホはキーボードの音声入力も使えます）"
+          placeholder="ここに会話を貼り付けます（ボイスメモの文字起こしをコピーして貼る／キーボードの音声入力でも入ります）"
         />
       </label>
-      <div className="mt-3 flex flex-wrap gap-3">
+      <div className="mt-3 flex flex-wrap items-center gap-3">
+        <PasteButton onPaste={(text) => onTranscriptChange(appendTranscript(transcript, text))} disabled={drafting} />
         <Button variant="primary" onClick={onMask} disabled={transcript.trim() === "" || drafting}>
           マスクして確認
         </Button>

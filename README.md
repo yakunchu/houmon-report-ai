@@ -82,8 +82,9 @@ npm run eval                  # 架空台本で下書きを作り、見本と比
 ```
 
 - モデルと effort は環境変数で切り替えられる（`.env.example` の `HOUMON_MODEL` / `HOUMON_EFFORT`）。既定は `claude-opus-5-5` / `low`（架空台本 2 本の比較で `medium` と同じ精度のまま約 10 秒。`claude-sonnet-5-5` なら約 7〜8 秒。`docs/PLAN.md` §4-1）。
-- **スマホから https で開く（録音・マイクに必要）**: `npm run cert:dev` で開発用 CA と LAN IP 入りのサーバー証明書を `certificates/`（git 管理外）に作り、`npm run dev:https` で起動する（`https://<PC の IP>:3000`）。OpenSSL（Git for Windows 付属）だけで作るので mkcert のダウンロードは不要。iPhone には CA（`certificates/rootCA.pem`。公開鍵だけ）を入れる: `npm run serve:ca` で PC が `http://<PC の IP>:8788/` に QR と手順を出す → iPhone で QR を読む → プロファイルをインストール → 設定 > 一般 > 情報 > 証明書信頼設定で「houmon-report-ai dev CA」を ON。PC の IP が変わったら `npm run cert:dev -- --force` で作り直す。`rootCA-key.pem` は PC の外に出さない。開けたかの確認は「この接続はプライベートではありません」の警告が出ないこと（iOS 26・27 の Safari はアドレスバーに鍵マークを出さない。Apple のガイドどおり、ページメニュー → 接続セキュリティの詳細で発行者を見る）。`https://<PC の IP>:3000/diag` を開くと、その端末で録音と端末内音声認識が使えるかを確かめられる（患者データは扱わない診断画面。結果はコピーして報告できる）。
-- 同じ Wi-Fi のスマホからは `http://<PC の IP>:3000` で開ける。Next.js は `localhost` 以外からの開発アクセスをブロックするため、`next.config.ts` の `allowedDevOrigins` に PC の LAN IP（`192.168.1.112` と `192.168.1.*`）を登録してある。別のネットワークでは書き換える。http のためマイク（録音）は使えない（コピーは予備手段で動く）。HTTPS で開く方法の比較は `docs/PLAN.md` §4-6。
+- **会話の入れ方**: 文字起こしを貼り付ける。iPhone は、ボイスメモで録音 → 「文字起こしを表示」→ コピー → アプリの「クリップボードから貼り付け」。その場で話すならキーボードの音声入力（Apple の案内では日本語は iPhone 上で処理）。アプリは音声を録音も送信もしない。Safari は端末内処理を保証した音声認識（`processLocally`）を提供しないため、アプリ内の音声認識は採用しなかった（実機診断 `/diag`、`docs/PLAN.md` §4-5）。
+- **スマホから https で開く（貼り付けボタン・マイクなど「安全なコンテキスト」が要る機能のため）**: `npm run cert:dev` で開発用 CA と LAN IP 入りのサーバー証明書を `certificates/`（git 管理外）に作り、`npm run dev:https` で起動する（`https://<PC の IP>:3000`）。OpenSSL（Git for Windows 付属）だけで作るので mkcert のダウンロードは不要。iPhone には CA（`certificates/rootCA.pem`。公開鍵だけ）を入れる: `npm run serve:ca` で PC が `http://<PC の IP>:8788/` に QR と手順を出す → iPhone で QR を読む → プロファイルをインストール → 設定 > 一般 > 情報 > 証明書信頼設定で「houmon-report-ai dev CA」を ON。PC の IP が変わったら `npm run cert:dev -- --force` で作り直す。`rootCA-key.pem` は PC の外に出さない。開けたかの確認は「この接続はプライベートではありません」の警告が出ないこと（iOS 26・27 の Safari はアドレスバーに鍵マークを出さない。Apple のガイドどおり、ページメニュー → 接続セキュリティの詳細で発行者を見る）。`https://<PC の IP>:3000/diag` を開くと、その端末で録音と端末内音声認識が使えるかを確かめられる（患者データは扱わない診断画面。結果はコピーして報告できる）。
+- 同じ Wi-Fi のスマホからは `http://<PC の IP>:3000` で開ける。Next.js は `localhost` 以外からの開発アクセスをブロックするため、`next.config.ts` の `allowedDevOrigins` に PC の LAN IP（`192.168.1.112` と `192.168.1.*`）を登録してある。別のネットワークでは書き換える。http では「クリップボードから貼り付け」ボタンとマイクが使えない（長押しのペーストと、コピーの予備手段は動く）。HTTPS で開く方法の比較は `docs/PLAN.md` §4-6。
 - ルールを変えるときは `prompts/report-rules.md` だけを直し、`npm run gen:prompt` → `npm run eval` で見本との一致を確認する。評価の記録は `eval-results/history.md` に残る。
 
 ## 架空データ方針
@@ -112,7 +113,8 @@ npm run eval                  # 架空台本で下書きを作り、見本と比
 | 11/4（続き）済 | 患者リストの書き出し・読み込み。備考・SOAP の文体調整（備考は 1 事実、S は 2 件、P に当然のことは書かない → 見本とずれていた備考がすべて一致）。モデル・effort の比較で既定を Opus 5.5 / low に（約 10 秒）。失敗時の表示を原因別に（残高不足・キー無効は管理者へ連絡＋詳細コピー、混雑は秒読み再試行、オフライン検知、`/api/health` でキー設定の有無） |
 | 11/5 | iPhone 実機での使い勝手の確認と調整、3 本目の架空台本（医師宛）、デモ動画の構成案 |
 | 11/5 | スマホでの速さと見やすさ、モデル・effort の比較、2 本目の架空台本（ケアマネ宛）での過剰適合の確認 |
-| 11/6 | 録音と端末内音声認識（時間があれば。サーバー送信型の音声認識は個人情報が生の音声で外部に出るため使わない） |
+| 11/4（夜）済 | iPhone から https で開けるように（自前の開発用 CA）。端末診断 `/diag` で、iOS 27 の Safari は端末内処理の音声認識に非対応と判明 → **アプリ内の音声認識・録音は作らない**（サーバー送信型は使わない方針）。代わりに②会話へ「会話の入れ方」とクリップボード貼り付けボタンを追加（ボイスメモの文字起こし → 貼り付け。キーボード音声入力は日本語が端末上処理） |
+| 11/6 | デモ経路の固定、README の仕上げ、`/eval-report` 整備 |
 | 11/7〜11/8 | デモ動画、提出文、最終評価と監査。提出は 11/8（日）20:00 JST |
 
 計画の詳細は [`docs/PLAN.md`](docs/PLAN.md)、プロジェクトの前提は [`CLAUDE.md`](CLAUDE.md) を参照。

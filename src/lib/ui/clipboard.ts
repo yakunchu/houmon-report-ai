@@ -6,6 +6,24 @@
 
 export type CopyMethod = "clipboard" | "legacy" | "failed";
 
+export type ReadClipboardResult = { ok: true; text: string } | { ok: false; reason: "unsupported" | "denied" | "failed" };
+
+/**
+ * クリップボードの文字を読む（「クリップボードから貼り付け」ボタン用）。
+ * navigator.clipboard.readText は secure context（https か localhost）でだけ使え、iOS Safari はタップのたびに
+ * 「ペースト」の許可を求める。使えない・断られたときは理由を返し、画面側で長押しの「ペースト」を案内する。
+ */
+export async function readClipboardText(): Promise<ReadClipboardResult> {
+  if (typeof window === "undefined" || !window.isSecureContext || typeof navigator.clipboard?.readText !== "function") {
+    return { ok: false, reason: "unsupported" };
+  }
+  try {
+    return { ok: true, text: await navigator.clipboard.readText() };
+  } catch (e) {
+    return { ok: false, reason: e instanceof DOMException && e.name === "NotAllowedError" ? "denied" : "failed" };
+  }
+}
+
 export async function copyText(text: string): Promise<CopyMethod> {
   if (typeof window !== "undefined" && window.isSecureContext && navigator.clipboard?.writeText) {
     try {
