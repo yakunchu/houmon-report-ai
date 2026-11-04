@@ -12,7 +12,11 @@
     "prebuild": "npm run gen:prompt",
     "eval": "node --env-file=.env --import tsx scripts/eval.ts",
     "test": "vitest run",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "cert:dev": "node scripts/make-dev-cert.mjs",
+    "predev:https": "npm run gen:prompt",
+    "dev:https": "next dev --experimental-https --experimental-https-key certificates/dev-key.pem --experimental-https-cert certificates/dev-cert.pem --experimental-https-ca certificates/rootCA.pem",
+    "serve:ca": "node scripts/serve-ca.mjs"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^1.3.0",

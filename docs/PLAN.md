@@ -174,6 +174,8 @@
 
 **方針（2026-11-02 確定。社長のスマホは iPhone）**: **A で進める。B（Android Chrome のフラグ）は対象外。** C は LAN 外でのデモの予備（必ず `--allowed-mail` 付き）。D は 11/7 以降。いずれも `allowedDevOrigins` はホスト名で判定されるため https でも必要。
 
+**11/4 実施**: mkcert ではなく **OpenSSL（Git for Windows 付属）** で開発用 CA と LAN IP 入りのサーバー証明書を作る `scripts/make-dev-cert.mjs`（`npm run cert:dev`）、`npm run dev:https`、CA を LAN 内の iPhone に配る `scripts/serve-ca.mjs`（`npm run serve:ca`。公開鍵の `rootCA.pem` だけを `application/x-x509-ca-cert` で配り、QR と手順ページを出す）を用意。Next.js は鍵と証明書を渡すと mkcert を取りに行かないことを `next/dist/cli/next-dev.js` で確認。証明書は Apple の要件（RSA 2048・SHA-256・SAN・EKU serverAuth・398 日以内）に合わせた。残りは iPhone 側の CA 導入（社長）と鍵マークの確認。
+
 11/6 の手順（iPhone 向け）:
 1. PC で mkcert を用意する（Next が `--experimental-https` の初回に取得する mkcert バイナリの流用か、winget 等での導入。当日に一次情報で確認）。`mkcert -install` のあと `mkcert 192.168.1.112 localhost 127.0.0.1 ::1` で LAN IP 入りの証明書を作る（PC の IP は DHCP で変わり得るので、ルーターで固定割当にするか、変わったら作り直す）。
 2. `package.json` に `dev:https`（`next dev --experimental-https --experimental-https-key <key> --experimental-https-cert <cert>`）を足す。証明書と鍵は git 管理外に置く（`.gitignore` に追加。`rootCA-key.pem` は PC の外に出さない）。

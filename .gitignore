@@ -163,3 +163,6 @@ next-env.d.ts
 
 # 評価結果: JSON は追跡しない（history.md と README.md は追跡）
 eval-results/*.json
+
+# 開発用の証明書と鍵（git 管理外。rootCA-key.pem は絶対に共有しない）
+certificates/
