@@ -45,6 +45,7 @@ import {
   mergeTokens,
 } from "@/lib/ui/basic-info";
 import { listUnsureLabels } from "@/lib/ui/draft-utils";
+import { useOnlineStatus, useServerHealth } from "@/lib/ui/health";
 import {
   basicInfoToPatient,
   isSamePatientContent,
@@ -75,6 +76,7 @@ import { type BasicInfo } from "@/lib/ui/types";
 import { WarnText } from "./ui";
 import { BasicInfoSection } from "./BasicInfoSection";
 import { DraftSection } from "./DraftSection";
+import { makeDraftError, type DraftErrorInfo } from "./DraftErrorPanel";
 import { OutputSection } from "./OutputSection";
 import { CurrentPatientBar } from "./patients/CurrentPatientBar";
 import { PatientPicker } from "./patients/PatientPicker";
@@ -182,7 +184,9 @@ function ReportAppInner() {
   const [ackWarnings, setAckWarnings] = useState(false);
   const [drafting, setDrafting] = useState(false);
   const [elapsedSec, setElapsedSec] = useState(0);
-  const [draftError, setDraftError] = useState<string | null>(null);
+  const [draftError, setDraftError] = useState<DraftErrorInfo | null>(null);
+  const online = useOnlineStatus();
+  const { health: serverHealth, checking: serverChecking, failed: serverCheckFailed, refetch: recheckServer } = useServerHealth();
   const [leakWarning, setLeakWarning] = useState(false);
   const [finalizing, setFinalizing] = useState(false);
   const [confirmed, setConfirmed] = useState(false);
@@ -270,6 +274,8 @@ function ReportAppInner() {
 
   async function handleDraft(): Promise<void> {
     if (!maskState || maskStale || drafting) return;
+    // オフライン・API キー未設定のときは送らない（ボタンも止めているが、念のため）
+    if (!online || (serverHealth !== null && !serverHealth.hasApiKey)) return;
     // 患者の氏名が未入力だとマスクできない。会話に患者名が見つからないときは、画面で了承が要る
     if (!basicFilled) return;
     const { masked, tokens } = maskState.result;
@@ -287,7 +293,16 @@ function ReportAppInner() {
     }
     setLeakWarning(false);
     if (masked.length > 30000) {
-      setDraftError("会話が長すぎます（3万文字まで）。分けて作成してください。");
+      setDraftError(
+        makeDraftError({
+          error: "invalid_request",
+          code: "bad_request",
+          retryable: false,
+          message: "会話が長すぎます（3万文字まで）。分けて作成してください。",
+          elapsedSec: 0,
+          model: serverHealth?.model || undefined,
+        }),
+      );
       return;
     }
 
@@ -299,7 +314,15 @@ function ReportAppInner() {
 
     const controller = new AbortController();
     const timer = window.setTimeout(() => controller.abort(), DRAFT_TIMEOUT_MS);
-    let res: DraftResponse;
+    const startedAt = Date.now();
+    const model = serverHealth?.model || undefined;
+    // 失敗の形をそろえて作る（経過秒は送信からの実測）
+    // 画面側の失敗（端末 → サーバーが届かない・時間切れ・応答が読めない）は from=device
+    const fail = (e: Pick<DraftErrorInfo, "error" | "code" | "retryable" | "message">): DraftErrorInfo =>
+      makeDraftError({ ...e, from: "device", elapsedSec: Math.round((Date.now() - startedAt) / 1000), model });
+    let res: DraftResponse | null = null;
+    let failure: DraftErrorInfo | null = null;
+    let reached = false; // サーバーから応答の頭が戻ったか（戻ったあとの失敗は、通信ではなく応答の問題）
     try {
       const r = await fetch("/api/draft", {
         method: "POST",
@@ -307,31 +330,71 @@ function ReportAppInner() {
         body: JSON.stringify(body),
         signal: controller.signal,
       });
+      reached = true;
       const json: unknown = await r.json();
       if (typeof json !== "object" || json === null || typeof (json as { ok?: unknown }).ok !== "boolean") {
         throw new Error("unexpected response");
       }
       res = json as DraftResponse;
     } catch {
-      res = {
-        ok: false,
-        error: "network",
-        message: controller.signal.aborted
-          ? "時間がかかりすぎたため中止しました。もう一度試してください。"
-          : "サーバーに接続できませんでした。Wi-Fi とサーバーが動いているかを確認して、もう一度試してください。",
-      };
+      if (controller.signal.aborted) {
+        failure = fail({
+          error: "network",
+          code: "timeout",
+          retryable: true,
+          message: "時間がかかりすぎたため中止しました。もう一度試してください。",
+        });
+      } else if (reached) {
+        failure = fail({
+          error: "unknown",
+          code: "unknown",
+          retryable: true,
+          message: "サーバーの応答を読み取れませんでした。もう一度試してください。",
+        });
+      } else {
+        failure = fail({
+          error: "network",
+          code: "network",
+          retryable: true,
+          message: "サーバーに接続できませんでした。Wi-Fi とサーバーが動いているかを確認して、もう一度試してください。",
+        });
+      }
     } finally {
       window.clearTimeout(timer);
     }
     setDrafting(false);
 
+    if (failure !== null || res === null) {
+      setDraftError(failure);
+      return;
+    }
     if (!res.ok) {
-      setDraftError(res.message);
+      setDraftError(
+        makeDraftError({
+          error: res.error,
+          code: res.code,
+          retryable: res.retryable,
+          message: res.message,
+          from: "server",
+          elapsedSec: Math.round((Date.now() - startedAt) / 1000),
+          model,
+        }),
+      );
       return;
     }
     const parsed = ReportDraftSchema.safeParse(res.draft);
     if (!parsed.success) {
-      setDraftError("下書きの形式が想定と違っていました。もう一度試してください。");
+      setDraftError(
+        makeDraftError({
+          error: "unknown",
+          code: "unknown",
+          retryable: true,
+          message: "下書きの形式が想定と違っていました。もう一度試してください。",
+          from: "server",
+          elapsedSec: Math.round((Date.now() - startedAt) / 1000),
+          model: res.model || model,
+        }),
+      );
       return;
     }
     // 送信中に別の患者へ切り替えた。この下書きは前の患者のものなので捨てる
@@ -681,6 +744,11 @@ function ReportAppInner() {
             elapsedSec={elapsedSec}
             onDraft={handleDraft}
             draftError={draftError}
+            online={online}
+            serverHealth={serverHealth}
+            serverChecking={serverChecking}
+            serverCheckFailed={serverCheckFailed}
+            onRecheckServer={() => void recheckServer()}
             leakWarning={leakWarning}
             hasDraft={session !== null}
             maskedContext={maskState?.context ?? null}

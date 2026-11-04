@@ -153,4 +153,22 @@ export type DraftResponse =
       error: "refusal" | "max_tokens" | "invalid_request" | "rate_limited" | "server_error" | "network" | "unknown";
       /** 画面に出す日本語の説明 */
       message: string;
+      /**
+       * 原因の細分類（画面の案内の出し分けと、社長に伝えるときの手がかり）。
+       * auth: API キーが無効・未設定 / credit_balance: 残高不足 / model_not_found: モデル名の誤り /
+       * permission: キーの権限 / rate_limited: 短時間の呼びすぎ / overloaded: API の混雑 / timeout: 時間切れ /
+       * network: 接続できない / refusal / max_tokens / bad_request / server_error / unknown
+       */
+      code?: string;
+      /** そのまま再試行して直る見込みがあるか（混雑・一時的な障害・通信など） */
+      retryable?: boolean;
     };
+
+/** /api/health の応答。キーの値は含めない（設定の有無だけ） */
+export type HealthResponse = {
+  ok: boolean;
+  /** ANTHROPIC_API_KEY がサーバーに設定されている */
+  hasApiKey: boolean;
+  model: string;
+  effort: string;
+};

@@ -65,6 +65,10 @@
 - `.githooks/pre-commit`: 同じ `guard-commit.mjs` を `git commit` 時に実行。Claude Code 以外（手でのコミット）も守る。`git add -A && git commit` のように 1 つのコマンドで追加とコミットを続ける場合、Claude Code のフックは追加前に検査するため、この pre-commit が最終防衛線になる
 - `.githooks/pre-push`: `guard-commit.mjs --pre-push` を `git push` 時に実行。Claude Code のフックを通らない push（手での push、フックが効かない経路）も、push 前に履歴全体を検査して止める
 
+## 失敗したときの表示
+
+下書きの作成に失敗したときは、原因別に見出し・説明・「次にすること」を出す（`src/components/DraftErrorPanel.tsx`、分類は `src/lib/report/draft-errors.ts`）。API キー未設定・無効、権限、モデル名の誤り、**残高不足**は利用者側では直せないので「管理者（社長）に連絡」と、連絡用の詳細（code・種別・モデル・時刻だけ。会話や個人情報は含まない）のコピーを出す。混雑・レート制限は秒読み付きの再試行、通信の失敗は Wi-Fi とサーバーの確認を案内する。オフラインのときは送信前に知らせ、`GET /api/health`（キーの値は返さず、設定の有無とモデル名だけ）でサーバーの準備状態を画面に出す。
+
 ## 使い方
 
 ```bash
@@ -77,7 +81,7 @@ npm run dev                   # 画面を起動
 npm run eval                  # 架空台本で下書きを作り、見本と比べる（API を 1 回呼ぶ。費用が掛かる）
 ```
 
-- モデルと effort は環境変数で切り替えられる（`.env.example` の `HOUMON_MODEL` / `HOUMON_EFFORT`）。
+- モデルと effort は環境変数で切り替えられる（`.env.example` の `HOUMON_MODEL` / `HOUMON_EFFORT`）。既定は `claude-opus-5-5` / `low`（架空台本 2 本の比較で `medium` と同じ精度のまま約 10 秒。`claude-sonnet-5-5` なら約 7〜8 秒。`docs/PLAN.md` §4-1）。
 - 同じ Wi-Fi のスマホからは `http://<PC の IP>:3000` で開ける。Next.js は `localhost` 以外からの開発アクセスをブロックするため、`next.config.ts` の `allowedDevOrigins` に PC の LAN IP（`192.168.1.112` と `192.168.1.*`）を登録してある。別のネットワークでは書き換える。http のためマイク（録音）は使えない（コピーは予備手段で動く）。HTTPS で開く方法の比較は `docs/PLAN.md` §4-6。
 - ルールを変えるときは `prompts/report-rules.md` だけを直し、`npm run gen:prompt` → `npm run eval` で見本との一致を確認する。評価の記録は `eval-results/history.md` に残る。
 
@@ -103,7 +107,8 @@ npm run eval                  # 架空台本で下書きを作り、見本と比
 |---|---|
 | Day 0（11/2）済 | 計画（`docs/PLAN.md`）、報告書スキーマとルールの正本、架空フィクスチャ、Claude Code 基盤（フック・Skills・サブエージェント）。貼り付け → マスク確認 → 下書き → フォーム → 確定 → 復元 → コピー・印刷の一連の経路が動く。評価は選択式 13/13 一致、S は原文引用、センノシドの残数だけ「要確認」（`eval-results/history.md`） |
 | 11/3〜11/4 済 | iPhone（同じ Wi-Fi）から開けるように（`allowedDevOrigins`、http でも動くコピー）。**患者リスト**（検索・グループ・並び替え・新患の自動入力）を追加。評価は通常・新患モードとも選択式 13/13、提案欄は会話どおり（`eval-results/history.md`） |
-| 11/5 | 備考・SOAP の文体の調整、エラー時の表示、モデル・effort の比較 |
+| 11/4（続き）済 | 患者リストの書き出し・読み込み。備考・SOAP の文体調整（備考は 1 事実、S は 2 件、P に当然のことは書かない → 見本とずれていた備考がすべて一致）。モデル・effort の比較で既定を Opus 5.5 / low に（約 10 秒）。失敗時の表示を原因別に（残高不足・キー無効は管理者へ連絡＋詳細コピー、混雑は秒読み再試行、オフライン検知、`/api/health` でキー設定の有無） |
+| 11/5 | iPhone 実機での使い勝手の確認と調整、3 本目の架空台本（医師宛）、デモ動画の構成案 |
 | 11/5 | スマホでの速さと見やすさ、モデル・effort の比較、2 本目の架空台本（ケアマネ宛）での過剰適合の確認 |
 | 11/6 | 録音と端末内音声認識（時間があれば。サーバー送信型の音声認識は個人情報が生の音声で外部に出るため使わない） |
 | 11/7〜11/8 | デモ動画、提出文、最終評価と監査。提出は 11/8（日）20:00 JST |

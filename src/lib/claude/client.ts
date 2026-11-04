@@ -8,7 +8,11 @@ export const EFFORT_LEVELS = ["low", "medium", "high", "xhigh", "max"] as const;
 export type Effort = (typeof EFFORT_LEVELS)[number];
 
 export const DEFAULT_MODEL = "claude-opus-5-5";
-export const DEFAULT_EFFORT: Effort = "medium";
+/**
+ * 既定の effort。2026-11-04 の比較（架空台本 2 本、各 1 回）で low は medium と同じ選択式 13/13・
+ * 内容理解要確認の判定も同じで、所要が約 20 秒 → 約 10 秒に短くなったため low を既定にした（docs/PLAN.md §4-1）。
+ */
+export const DEFAULT_EFFORT: Effort = "low";
 
 /** API キーが未設定のときのエラー（draft.ts で画面向けメッセージに変換する） */
 export class MissingApiKeyError extends Error {
@@ -26,9 +30,12 @@ export function getModelConfig(): { model: string; effort: Effort } {
   return { model, effort };
 }
 
-/** キーが空なら MissingApiKeyError。リトライは SDK 既定（2 回）、1 回あたり 3 分で打ち切る */
+/**
+ * キーが空なら MissingApiKeyError。1 回あたり 3 分で打ち切り、リトライは 1 回まで
+ * （画面側は 3 分で中止する。サーバー側が何度も再試行して裏で動き続けないようにする）
+ */
 export function createClient(): Anthropic {
   const apiKey = process.env.ANTHROPIC_API_KEY?.trim();
   if (!apiKey) throw new MissingApiKeyError();
-  return new Anthropic({ apiKey, timeout: 180_000 });
+  return new Anthropic({ apiKey, timeout: 180_000, maxRetries: 1 });
 }

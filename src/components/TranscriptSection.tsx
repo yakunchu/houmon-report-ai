@@ -1,7 +1,9 @@
 /** ② 会話入力 → マスクして確認 → 下書きを作る */
 import type { ReactNode } from "react";
 import type { MaskResult, MaskToken } from "@/lib/mask/types";
-import type { DraftContext } from "@/lib/report/schema";
+import type { DraftContext, HealthResponse } from "@/lib/report/schema";
+import { describeServer } from "@/lib/ui/health";
+import { DraftErrorPanel, type DraftErrorInfo } from "./DraftErrorPanel";
 import { Button, Section, WarnText, inputClass } from "./ui";
 
 function escapeRegExp(s: string): string {
@@ -43,6 +45,11 @@ export function TranscriptSection({
   elapsedSec,
   onDraft,
   draftError,
+  online,
+  serverHealth,
+  serverChecking,
+  serverCheckFailed,
+  onRecheckServer,
   leakWarning,
   hasDraft,
   maskedContext,
@@ -62,7 +69,17 @@ export function TranscriptSection({
   drafting: boolean;
   elapsedSec: number;
   onDraft: () => void;
-  draftError: string | null;
+  draftError: DraftErrorInfo | null;
+  /** 端末がオンラインか（オフラインなら下書きボタンを止める） */
+  online: boolean;
+  /** GET /api/health の結果。取れなかったときは null（何も表示しない） */
+  serverHealth: HealthResponse | null;
+  /** サーバー状態を確認している最中 */
+  serverChecking: boolean;
+  /** 直近の確認が失敗した（サーバーに届かない・応答が不正） */
+  serverCheckFailed: boolean;
+  /** サーバー状態の再確認（API キーを設定し直したあとなどに使う） */
+  onRecheckServer: () => void;
   leakWarning: boolean;
   hasDraft: boolean;
   /** 家族構成・処方内容などの文脈欄をマスクしたもの（AIに送る） */
@@ -83,9 +100,12 @@ export function TranscriptSection({
   // 患者の氏名が未入力なら送れない。会話に患者名が1件も見つからないとき、名前らしい語の警告が残っているときは、了承が要る
   const canDraft =
     maskResult !== null && !maskStale && basicFilled && (!noPatientToken || ackNoPatient) && (!hasWarnings || ackWarnings);
-  const ready = canDraft;
+  const serverStatus = describeServer(serverHealth);
+  // オフライン・API キー未設定のときは送れない（送っても失敗するだけなので、先に止める）
+  const ready = canDraft && online && !serverStatus?.keyMissing;
   return (
     <Section id="step-2" title="② 会話">
+      {!online ? <WarnText>オフラインです。Wi-Fi をご確認ください。つながるまで、下書きは作れません。</WarnText> : null}
       <label className="block">
         <span className="mb-1 block font-bold">訪問中の会話（文字起こしを貼り付け）</span>
         <textarea
@@ -225,17 +245,37 @@ export function TranscriptSection({
                 <div className="mt-2 h-3 w-full animate-pulse rounded bg-blue-300" aria-hidden="true" />
               </div>
             ) : null}
-            {draftError ? (
-              <div role="alert" className="mt-3 rounded-lg border-2 border-red-800 bg-red-50 p-4">
-                <p className="text-xl font-bold text-red-950">
-                  <span aria-hidden="true">✕ </span>
-                  下書きを作れませんでした
-                </p>
-                <p className="mt-1 text-xl text-red-950">{draftError}</p>
-                <Button className="mt-3" variant="primary" onClick={onDraft} disabled={!ready || drafting}>
-                  もう一度試す
+            {serverStatus ? (
+              <p className="mt-2 text-lg text-slate-800">
+                <span aria-hidden="true">{serverStatus.ready ? "✓ " : "⚠ "}</span>
+                {serverStatus.label}
+              </p>
+            ) : null}
+            {serverStatus?.keyMissing ? (
+              <WarnText>
+                サーバーに API キーが設定されていないため、下書きは作れません。管理者（社長）に連絡してください。設定し直してもらったら、下の「サーバーの状態を再確認」を押してください（入力した内容は消えません）。
+              </WarnText>
+            ) : null}
+            {serverStatus && !serverStatus.ready ? (
+              <div className="mt-2">
+                <Button onClick={onRecheckServer} disabled={serverChecking}>
+                  {serverChecking ? "確認しています…" : "サーバーの状態を再確認"}
                 </Button>
+                {serverCheckFailed && !serverChecking ? (
+                  <p role="status" className="mt-1 text-lg font-bold text-amber-950">
+                    <span aria-hidden="true">⚠ </span>
+                    サーバーに確認できませんでした。つながりを確かめて、もう一度押してください。
+                  </p>
+                ) : null}
               </div>
+            ) : null}
+            {draftError ? (
+              <DraftErrorPanel
+                key={draftError.occurredAt}
+                info={draftError}
+                onRetry={onDraft}
+                retryDisabled={!ready || drafting}
+              />
             ) : null}
           </div>
         </div>
