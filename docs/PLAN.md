@@ -174,13 +174,13 @@
 
 **方針（2026-11-02 確定。社長のスマホは iPhone）**: **A で進める。B（Android Chrome のフラグ）は対象外。** C は LAN 外でのデモの予備（必ず `--allowed-mail` 付き）。D は 11/7 以降。いずれも `allowedDevOrigins` はホスト名で判定されるため https でも必要。
 
-**11/4 実施**: mkcert ではなく **OpenSSL（Git for Windows 付属）** で開発用 CA と LAN IP 入りのサーバー証明書を作る `scripts/make-dev-cert.mjs`（`npm run cert:dev`）、`npm run dev:https`、CA を LAN 内の iPhone に配る `scripts/serve-ca.mjs`（`npm run serve:ca`。公開鍵の `rootCA.pem` だけを `application/x-x509-ca-cert` で配り、QR と手順ページを出す）を用意。Next.js は鍵と証明書を渡すと mkcert を取りに行かないことを `next/dist/cli/next-dev.js` で確認。証明書は Apple の要件（RSA 2048・SHA-256・SAN・EKU serverAuth・398 日以内）に合わせた。残りは iPhone 側の CA 導入（社長）と鍵マークの確認。
+**11/4 実施**: mkcert ではなく **OpenSSL（Git for Windows 付属）** で開発用 CA と LAN IP 入りのサーバー証明書を作る `scripts/make-dev-cert.mjs`（`npm run cert:dev`）、`npm run dev:https`、CA を LAN 内の iPhone に配る `scripts/serve-ca.mjs`（`npm run serve:ca`。公開鍵の `rootCA.pem` だけを `application/x-x509-ca-cert` で配り、QR と手順ページを出す）を用意。Next.js は鍵と証明書を渡すと mkcert を取りに行かないことを `next/dist/cli/next-dev.js` で確認。証明書は Apple の要件（RSA 2048・SHA-256・SAN・EKU serverAuth・398 日以内）に合わせた。残りは iPhone 側の CA 導入（社長）と、警告なしで開けることの確認。**11/4 夜**: iPhone で `https://192.168.1.112:3000` が開けた。「鍵マークが出れば完了」と案内したのは誤りで、iOS 26・27 の Safari はアドレスバーに鍵マークを出さない。Apple の iPhone ユーザガイド（iOS 26 版・iOS 27 版とも）は暗号化の確認を「検索フィールド左のページメニュー → 接続セキュリティの詳細」で行う手順にしており、鍵マークには触れていない。信頼されていない証明書なら Safari は警告を出し、HTTPS でない・証明書がない場合は検索フィールドに「安全ではありません」と出る（同ガイド「デジタル証明書と暗号化されたWebサイト」）。
 
 11/6 の手順（iPhone 向け）:
 1. PC で mkcert を用意する（Next が `--experimental-https` の初回に取得する mkcert バイナリの流用か、winget 等での導入。当日に一次情報で確認）。`mkcert -install` のあと `mkcert 192.168.1.112 localhost 127.0.0.1 ::1` で LAN IP 入りの証明書を作る（PC の IP は DHCP で変わり得るので、ルーターで固定割当にするか、変わったら作り直す）。
 2. `package.json` に `dev:https`（`next dev --experimental-https --experimental-https-key <key> --experimental-https-cert <cert>`）を足す。証明書と鍵は git 管理外に置く（`.gitignore` に追加。`rootCA-key.pem` は PC の外に出さない）。
 3. iPhone に `rootCA.pem`（`mkcert -CAROOT` の場所）を AirDrop かメールで送って開く → 設定「プロファイルがダウンロードされました」からインストール → 設定 > 一般 > 情報 > 証明書信頼設定 で「ルート証明書を全面的に信頼」を ON（出典: mkcert README、Apple サポート 102390）。
-4. Safari で `https://192.168.1.112:3000` を開き、鍵マークが出ること、`window.isSecureContext` が true になること、マイク許可のダイアログが出ることを確認する。
+4. Safari で `https://192.168.1.112:3000` を開き、「この接続はプライベートではありません」の警告なしで開けること（＝CA が信頼されている）、ページメニュー → 「接続セキュリティの詳細」で発行者が houmon-report-ai dev CA と出ること、`window.isSecureContext` が true になること、マイク許可のダイアログが出ることを確認する。鍵マークは確認基準にしない（iOS 26・27 の Safari には出ない）。
 5. 録音の設計判断（§4-5）: Safari の `webkitSpeechRecognition` が端末内処理（`processLocally`）に対応しているかは未確認なので、まず `SpeechRecognition.available({ langs: ["ja-JP"], processLocally: true })` の戻り値を実機で確かめる。`unavailable` なら、録音は MediaRecorder で端末内に音声を残すだけにし、文字起こしは iPhone のキーボード音声入力（第1段階の経路）を使う方針に切り替える。サーバー送信型の音声認識は使わない。
 6. 証明書の有効期限や IP 変更で開けなくなったときの復旧手順を README に書く。
 

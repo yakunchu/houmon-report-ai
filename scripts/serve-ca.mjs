@@ -40,7 +40,8 @@ code{font-size:18px;background:#f1f5f9;padding:2px 6px;border-radius:4px}#qr{mar
 <li>Safari が「プロファイルをダウンロードしますか？」と聞くので <strong>許可</strong></li>
 <li>設定アプリ → 上部の「プロファイルがダウンロードされました」→ <strong>インストール</strong>（パスコード入力）</li>
 <li>設定 → 一般 → 情報 → <strong>証明書信頼設定</strong> → 「houmon-report-ai dev CA」を <strong>ON</strong>（ルート証明書を全面的に信頼）</li>
-<li>Safari で <code>${appUrl}</code> を開く → 鍵マークが出れば完了</li>
+<li>Safari で <code>${appUrl}</code> を開く → 「この接続はプライベートではありません」の警告が出ずに開けば完了。
+最近の iOS（26・27）の Safari はアドレスバーに鍵マークを出しません。確かめるときは、アドレスバー左のページメニューから「接続セキュリティの詳細」を開き、発行者が「houmon-report-ai dev CA」になっていることを見ます</li>
 </ol>
 <h2>アプリを開く（証明書を入れたあと）</h2>
 <div id="qr-app"></div>
