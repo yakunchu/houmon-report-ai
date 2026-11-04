@@ -32,7 +32,7 @@ import {
   type DraftResponse,
   type ReportDraft,
 } from "@/lib/report/schema";
-import { YAMAMOTO_BASIC, YAMAMOTO_TRANSCRIPT } from "@/lib/sample/yamamoto";
+import { findSample, type SampleId } from "@/lib/sample";
 import {
   buildContext,
   buildDictionary,
@@ -584,33 +584,44 @@ function ReportAppInner() {
     commitBasicKeepingDraft({ ...basic, ...item.patch }, item.fields);
   }
 
-  function loadSample(): void {
+  /** 架空サンプルを読み込む（すべて架空。デモ・動作確認用） */
+  function loadSample(id: SampleId): void {
     if (!confirmLeave(true)) return;
-    // 患者リストに架空の「山本 花子」が無ければ追加して選ぶ
-    const sample = YAMAMOTO_BASIC;
+    const sample = findSample(id);
+    const visit: VisitFields = {
+      recipientType: sample.basic.recipientType,
+      reportDate: sample.basic.reportDate,
+      nextVisitDate: sample.basic.nextVisitDate,
+      pharmacy: basic.pharmacy || sample.basic.pharmacy,
+    };
+
+    if (sample.asNewPatient) {
+      // 「新しい患者」として開く（患者リストには登録しない）。下書きのあと、会話から基本情報が自動入力され、
+      // 「患者リストに保存」で登録する流れを見せるためのサンプル
+      beginPatient(createEmptyPatient(), { ...store, selectedPatientId: null }, visit, true);
+      setBasic({ ...sample.basic, pharmacy: visit.pharmacy });
+      setTranscript(sample.transcript);
+      setBasicOpen(false);
+      scrollToId("step-2");
+      return;
+    }
+
+    // 登録済みの患者の流れ: 患者リストに無ければ追加して選ぶ
     let next = store;
     let patient = next.patients.find(
       (p) =>
-        p.familyName === sample.patientFamilyName && p.givenName === sample.patientGivenName && p.birthDate === sample.birthDate,
+        p.familyName === sample.basic.patientFamilyName &&
+        p.givenName === sample.basic.patientGivenName &&
+        p.birthDate === sample.basic.birthDate,
     );
     if (!patient) {
-      const created = basicInfoToPatient(sample, createEmptyPatient());
+      const created = basicInfoToPatient(sample.basic, createEmptyPatient());
       next = upsertPatient(next, created);
       patient = next.patients.find((p) => p.id === created.id) ?? created;
     }
     next = { ...next, selectedPatientId: patient.id };
-    beginPatient(
-      patient,
-      next,
-      {
-        recipientType: sample.recipientType,
-        reportDate: sample.reportDate,
-        nextVisitDate: sample.nextVisitDate,
-        pharmacy: basic.pharmacy || sample.pharmacy,
-      },
-      true,
-    );
-    setTranscript(YAMAMOTO_TRANSCRIPT);
+    beginPatient(patient, next, visit, true);
+    setTranscript(sample.transcript);
     setBasicOpen(false);
     scrollToId("step-2");
   }

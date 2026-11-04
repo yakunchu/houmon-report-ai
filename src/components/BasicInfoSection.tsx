@@ -6,6 +6,7 @@ import type { ReactNode } from "react";
 import type { Group as PatientGroup, GroupId } from "@/lib/patients";
 import { RECIPIENT_TYPES } from "@/lib/report/schema";
 import { MEDICATION_MANAGER, MANAGEMENT_METHOD } from "@/lib/report/schema";
+import { SAMPLES, type SampleId } from "@/lib/sample";
 import { isBasicFilled } from "@/lib/ui/basic-info";
 import type { AiField } from "@/lib/ui/suggestions";
 import { DISPENSING_FORMS, SEX_OPTIONS, VISIT_FREQUENCIES, type BasicInfo } from "@/lib/ui/types";
@@ -48,7 +49,7 @@ export function BasicInfoSection({
   onChange: (next: BasicInfo) => void;
   open: boolean;
   onToggle: () => void;
-  onLoadSample: () => void;
+  onLoadSample: (id: SampleId) => void;
   /** 作業中の入力（基本情報・会話・下書き）を消す。患者リストは残す */
   onClearSaved: () => void;
   /** 患者リストも含めて、この端末の保存をすべて消す */
@@ -73,8 +74,15 @@ export function BasicInfoSection({
         <Button onClick={onToggle} aria-expanded={open} aria-controls="basic-body">
           {open ? "▲ 基本情報を閉じる" : "▼ 基本情報を開いて入力・修正する"}
         </Button>
-        <Button onClick={onLoadSample}>架空サンプル（山本花子さん）を読み込む</Button>
+        {SAMPLES.map((s) => (
+          <Button key={s.id} onClick={() => onLoadSample(s.id)} title={s.description}>
+            {s.label}を読み込む
+          </Button>
+        ))}
       </div>
+      <p className="mt-2 text-base text-slate-800">
+        架空サンプル①は登録済みの患者の流れ（ケアマネ宛）、②は新しい患者の流れ（医師宛。会話から基本情報が自動入力されます）。
+      </p>
       {!open ? (
         <p className="mt-3 text-slate-800">
           {isBasicFilled(basic)
