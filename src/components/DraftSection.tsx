@@ -9,7 +9,16 @@ import {
   type EvidenceKey,
 } from "@/lib/report/fields";
 import { UNSURE, type ReportDraft } from "@/lib/report/schema";
-import { evidenceKeyForGroup, groupReportOrder, patchChoice, patchLeftover } from "@/lib/ui/draft-utils";
+import {
+  CONTACT_NOTES_MAX,
+  addContactNote,
+  evidenceKeyForGroup,
+  groupReportOrder,
+  patchChoice,
+  patchContactNote,
+  patchLeftover,
+  removeContactNote,
+} from "@/lib/ui/draft-utils";
 import { checkQuoteInText, findMissingQuotes, splitQuotes } from "@/lib/ui/quotes";
 import { Button, ChoiceButtons, Section, UnsureBadge, WarnText, inputClass } from "./ui";
 
@@ -201,6 +210,44 @@ function SoapCard({ draft, onChange, transcript }: { draft: ReportDraft; onChang
   );
 }
 
+/** 連絡事項（宛先向け）。印刷・メール・チャットの要旨に使う。1 件 1 文、最大 3 件 */
+function ContactNotesCard({ draft, onChange }: { draft: ReportDraft; onChange: (d: ReportDraft) => void }) {
+  const rows = draft.contactNotes;
+  const full = rows.length >= CONTACT_NOTES_MAX;
+  return (
+    <FieldCard label={`連絡事項（宛先向け・1〜${CONTACT_NOTES_MAX} 件。印刷・メール・チャットの要旨に使います）`}>
+      {rows.length === 0 ? <p className="mb-2">連絡事項はありません。必要なら追加してください。</p> : null}
+      <div className="space-y-3">
+        {rows.map((n, i) => (
+          <div key={i} className="flex flex-wrap items-end gap-2">
+            <label className="block min-w-0 flex-1">
+              <span className="mb-1 block font-bold text-ink">{i + 1}件目</span>
+              <input
+                className={inputClass}
+                aria-label={`連絡事項${i + 1}件目`}
+                placeholder="例: 残薬4日分は次回処方で日数調整をご検討いただきたい"
+                value={n}
+                onChange={(e) => onChange(patchContactNote(draft, i, e.target.value))}
+              />
+            </label>
+            <Button
+              variant="danger"
+              aria-label={`連絡事項${i + 1}件目を削除`}
+              onClick={() => onChange(removeContactNote(draft, i))}
+            >
+              削除
+            </Button>
+          </div>
+        ))}
+      </div>
+      <Button className="mt-3" disabled={full} onClick={() => onChange(addContactNote(draft))}>
+        ＋ 連絡事項を追加
+      </Button>
+      {full ? <p className="mt-2">連絡事項は最大 {CONTACT_NOTES_MAX} 件までです。</p> : null}
+    </FieldCard>
+  );
+}
+
 /** 根拠（会話からの引用）。原文に無い引用には警告を付ける */
 function EvidencePanel({ evidenceKey, draft, transcript }: { evidenceKey: EvidenceKey; draft: ReportDraft; transcript: string }) {
   const quotes = splitQuotes(draft.evidence[evidenceKey]);
@@ -259,7 +306,14 @@ export function DraftSection({ draft, onChange, transcript, onProceed, stale }: 
                 {g.items.map((item) => {
                   if (item.key === "leftoverMedications") return <LeftoverCard key={item.key} draft={draft} onChange={onChange} />;
                   if (item.key === "mealsPerDay") return <MealsPerDayCard key={item.key} draft={draft} onChange={onChange} />;
-                  if (item.key === "soap") return <SoapCard key={item.key} draft={draft} onChange={onChange} transcript={transcript} />;
+                  if (item.key === "soap") {
+                    return (
+                      <div key={item.key} className="space-y-3">
+                        <SoapCard draft={draft} onChange={onChange} transcript={transcript} />
+                        <ContactNotesCard draft={draft} onChange={onChange} />
+                      </div>
+                    );
+                  }
                   const def = CHOICE_FIELDS.find((f) => f.key === item.key);
                   return def ? <ChoiceCard key={item.key} def={def} draft={draft} onChange={onChange} /> : null;
                 })}

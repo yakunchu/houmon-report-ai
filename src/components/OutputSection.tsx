@@ -4,7 +4,7 @@
  */
 import { useRef, useState } from "react";
 import { copyText } from "@/lib/ui/clipboard";
-import { printModelToText, type EmailParts, type PrintModel } from "@/lib/report/formats";
+import { printModelToText, URGENT_NOTICE, type EmailParts, type PrintModel } from "@/lib/report/formats";
 import { PrintReport } from "./PrintReport";
 import { Button, ChoiceButtons, Section, UnsureBadge, WarnText } from "./ui";
 
@@ -55,7 +55,19 @@ const MAILTO_LONG = 1800;
 const preClass =
   "mt-3 whitespace-pre-wrap break-words rounded-xl border-2 border-line bg-raised p-4 font-[inherit] leading-8 print:border-0 print:p-0";
 
-/** 画面用の表（項目／結果／備考）。「要確認」は印を付けて太字 */
+/** 「要確認」を含む内容は ⚠ を付けて太字（色だけに頼らない） */
+function PreviewContent({ text }: { text: string }) {
+  return text.includes("要確認") ? (
+    <>
+      <span aria-hidden="true">⚠ </span>
+      <strong>{text}</strong>
+    </>
+  ) : (
+    <>{text}</>
+  );
+}
+
+/** 画面用の表（項目／内容） */
 function PreviewTable({ head, table }: { head: readonly string[]; table: PrintModel["life"] }) {
   return (
     <>
@@ -74,18 +86,12 @@ function PreviewTable({ head, table }: { head: readonly string[]; table: PrintMo
           <tbody>
             {table.rows.map((r, i) => (
               <tr key={i}>
-                <td className="border border-ink-muted px-2 py-1">{r.item}</td>
+                <th scope="row" className="border border-ink-muted px-2 py-1 text-left font-bold">
+                  {r.item}
+                </th>
                 <td className="border border-ink-muted px-2 py-1">
-                  {r.result.includes("要確認") ? (
-                    <>
-                      <span aria-hidden="true">⚠ </span>
-                      <strong>{r.result}</strong>
-                    </>
-                  ) : (
-                    r.result
-                  )}
+                  <PreviewContent text={r.content} />
                 </td>
-                <td className="border border-ink-muted px-2 py-1">{r.note}</td>
               </tr>
             ))}
           </tbody>
@@ -95,30 +101,35 @@ function PreviewTable({ head, table }: { head: readonly string[]; table: PrintMo
   );
 }
 
-/** 画面用の A4 プレビュー（簡略表示）。印刷時は PrintReport が出るのでこちらは隠す */
+/** 画面用の A4 プレビュー（簡略表示。紙と同じ並び）。印刷時は PrintReport が出るのでこちらは隠す */
 function PrintPreview({ model }: { model: PrintModel }) {
   const pairClass = "grid grid-cols-[7rem_1fr] gap-x-3 gap-y-1 sm:grid-cols-[7rem_1fr_7rem_1fr]";
   const dt = "font-bold text-ink";
   const dd = "break-words";
   return (
     <div className="mt-3 rounded-xl border-2 border-line bg-raised p-4 print:hidden">
-      <p className="mb-3 text-center text-xl font-bold">{model.title}</p>
-      <dl className={pairClass}>
-        {model.meta.map((p, i) => (
-          <div key={i} className="contents">
-            <dt className={dt}>{p.label}</dt>
-            <dd className={dd}>{p.value}</dd>
-          </div>
+      <div className="flex flex-wrap justify-between gap-x-4 font-bold">
+        <span>{model.addressee}</span>
+        <span>報告日　{model.reportDate}</span>
+      </div>
+      <p className="mt-2 text-center text-xl font-bold">{model.title}</p>
+      <p className="text-right">
+        {model.sender.map((s, i) => (
+          <span key={i}>
+            {i > 0 ? "　" : ""}
+            {s.label} {s.value}
+          </span>
         ))}
-      </dl>
-      <p className="mt-3 rounded-md border-2 border-ink-muted p-2 font-bold">
-        <span aria-hidden="true">⚠ </span>
-        {model.notice}
       </p>
+      <div className="mt-1 text-ink">
+        {model.sendNote.map((n, i) => (
+          <p key={i}>{n}</p>
+        ))}
+      </div>
 
-      <h3 className="mt-4 border-b-2 border-ink-muted font-bold">{model.basicTitle}</h3>
+      <h3 className="mt-4 border-b-2 border-ink-muted font-bold">{model.patientTitle}</h3>
       <dl className={`${pairClass} mt-2`}>
-        {model.basic.map((p, i) => (
+        {model.patient.map((p, i) => (
           <div key={i} className="contents">
             <dt className={dt}>{p.label}</dt>
             <dd className={dd}>{p.value}</dd>
@@ -160,7 +171,7 @@ function PrintPreview({ model }: { model: PrintModel }) {
         ))}
       </dl>
 
-      <h3 className="mt-4 border-b-2 border-ink-muted font-bold">{model.prescriptionTitle}</h3>
+      <h3 className="mt-6 border-t-2 border-dashed border-ink-muted pt-3 font-bold">{model.appendixTitle}</h3>
       {model.prescriptionHeader !== "" ? <p className="mt-2">{model.prescriptionHeader}</p> : null}
       <ul className="mt-1">
         {model.prescriptionItems.map((l, i) => (
@@ -323,17 +334,21 @@ export function OutputSection({
             />
           </div>
 
+          <p className="mt-3 font-bold text-ink print:hidden">{URGENT_NOTICE}</p>
+
           <div className="mt-4 flex flex-wrap gap-3 print:hidden">
             {format === "software" ? (
               <>
                 <Button variant="primary" onClick={() => copy(reportText, PASTE_HINT.software)} disabled={leftoverTokens}>
                   コピー
                 </Button>
-                <Button onClick={() => window.print()}>印刷</Button>
+                <Button onClick={() => window.print()} disabled={leftoverTokens}>
+                  印刷
+                </Button>
               </>
             ) : null}
             {format === "print" ? (
-              <Button variant="primary" onClick={() => window.print()}>
+              <Button variant="primary" onClick={() => window.print()} disabled={leftoverTokens}>
                 PDF・印刷
               </Button>
             ) : null}
@@ -407,7 +422,7 @@ export function OutputSection({
           {format === "print" ? (
             <>
               <p className="mt-3 text-ink print:hidden">
-                A4 1 枚の送信票つき報告書です。「PDF・印刷」で、印刷または PDF 保存（FAX 送信用）ができます。患者名は入ります。
+                A4 1 枚（処方内容は別紙 2 枚目）の報告書です。「PDF・印刷」で、印刷または PDF 保存（FAX 送信用）ができます。患者名は入ります。
               </p>
               {printModel ? (
                 <>
@@ -442,9 +457,7 @@ export function OutputSection({
               <p className="mt-3 text-ink print:hidden">
                 短い連絡用です（{Array.from(chat.replace(/\n/g, "")).length} 字）。患者名は、既定では入れていません。
               </p>
-              <p className="mt-1 font-bold text-ink print:hidden">
-                急ぎ・急変は電話で。チャットは利用者ごとのグループに書く前提です。
-              </p>
+              <p className="mt-1 text-ink print:hidden">チャットは利用者ごとのグループに書く前提です。</p>
               {nameCheck}
               <pre ref={preRef} className={preClass}>
                 {chat}

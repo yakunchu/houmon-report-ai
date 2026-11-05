@@ -27,6 +27,12 @@ export type FormatArgs = {
    * 渡さなければ、家族はすべて「ご家族」になる。
    */
   familyRelations?: readonly string[];
+  /**
+   * 連絡事項（宛先に合わせた 1〜3 行。下書きの contactNotes＝AI が P から抜き出し、薬剤師が直したもの）。
+   * 渡されて空でなければ、印刷の連絡事項・メールの要旨・チャットの要点とお願いにこれを優先して使う
+   * （1 件目＝要点・お願い、2 件目以降＝事実）。渡されない・空なら、P の最後の文などから組む。
+   */
+  contactNotes?: readonly string[];
 };
 
 export type EmailParts = { subject: string; body: string };
@@ -37,6 +43,25 @@ export const CHAT_MAX_CHARS = 200;
 export const EMAIL_BODY_TARGET = 300;
 
 const DASH = "—";
+
+/** どの送り方を選んでいても画面に出す注意書き（OutputSection）。印刷の送信票にも入れる */
+export const URGENT_NOTICE = "急ぎ・急変は電話で。";
+
+/** 連絡事項の最大行数 */
+export const CONTACT_NOTES_MAX = 3;
+
+/** 渡された連絡事項から、前後の空白と空行を除き、最大 3 件にする。無ければ空配列 */
+export function normalizeContactNotes(notes: readonly string[] | undefined): string[] {
+  return (notes ?? [])
+    .map((n) => n.trim())
+    .filter((n) => n !== "")
+    .slice(0, CONTACT_NOTES_MAX);
+}
+
+/** 連絡事項の 1 文が、相手への依頼（お願い）として読めるか。事実の文と区別して、チャットの【お願い】の見出しを付けるかを決める */
+export function isRequestNote(note: string): boolean {
+  return /(?:いただきたい|ください|くださいませ|お願い(?:したい|します|いたします|申し上げます)?|ほしい|欲しい|願いたい)。?$/.test(note.trim());
+}
 
 // ---------- 小さな部品 ----------
 
@@ -213,9 +238,19 @@ export function politeForEmail(sentence: string): string {
   return s;
 }
 
-/** 要旨 2〜3 行。医師宛て＝処方提案＋事実、ケアマネ宛て＝お願い＋事実＋医師への提案、その他＝お願い＋事実 */
-function emailSummary(args: FormatArgs, adherenceNote: boolean, leftoverNotes: boolean): string[] {
+/**
+ * 要旨 2〜3 行。連絡事項（contactNotes）があれば、それを丁寧な形にして使う（1 件目＝要点・お願い、2 件目以降＝事実。noteCount 件まで）。
+ * 無ければ 医師宛て＝処方提案＋事実、ケアマネ宛て＝お願い＋事実＋医師への提案、その他＝お願い＋事実
+ */
+function emailSummary(
+  args: FormatArgs,
+  adherenceNote: boolean,
+  leftoverNotes: boolean,
+  noteCount: number = CONTACT_NOTES_MAX,
+): string[] {
   const { draft, recipientType } = args;
+  const notes = normalizeContactNotes(args.contactNotes);
+  if (notes.length > 0) return notes.slice(0, Math.max(1, noteCount)).map(politeForEmail);
   const req = lastSentence(draft.soap.p);
   const lines = [politeForEmail(req), adherenceFact(draft, adherenceNote, leftoverNotes)];
   if (recipientType === "ケアマネ") {
@@ -237,14 +272,14 @@ export function buildEmail(args: FormatArgs): EmailParts {
   const showName = includePatientName && header.patient.name.trim() !== "";
   const who = pharmacyName === "" ? "" : staff !== "" ? `${pharmacyName}の${staff}です。` : `${pharmacyName}です。`;
 
-  const make = (adherenceNote: boolean, leftoverNotes: boolean): string => {
+  const make = (adherenceNote: boolean, leftoverNotes: boolean, noteCount: number): string => {
     const lines: string[] = [];
     lines.push(header.addressee !== "" ? header.addressee : fallbackAddressee(recipientType), "");
     lines.push(`いつもお世話になっております。${who}`);
     lines.push(`${md !== "" ? `${md}に` : ""}訪問した患者様の報告書を、別送（FAX／PDF）にてお送りします。`);
     if (showName) lines.push(`患者：${patientNameLine(header)}`);
     lines.push("");
-    lines.push(...emailSummary(args, adherenceNote, leftoverNotes).map(tidy));
+    lines.push(...emailSummary(args, adherenceNote, leftoverNotes, noteCount).map(tidy));
     lines.push("");
     if (!showName) lines.push("患者様のお名前は別送の報告書に記載しています。");
     lines.push("よろしくお願いいたします。", "");
@@ -254,15 +289,22 @@ export function buildEmail(args: FormatArgs): EmailParts {
     return lines.join("\n") + "\n";
   };
 
-  // 300 字以内を目安に、超えたら事実の行から備考を落とす
-  const levels: [boolean, boolean][] = [
-    [true, true],
-    [false, true],
-    [false, false],
-  ];
+  // 300 字以内を目安に、超えたら事実の行から備考を落とす（連絡事項が渡されているときは、後ろの行から減らす）
+  const levels: [boolean, boolean, number][] =
+    normalizeContactNotes(args.contactNotes).length > 0
+      ? [
+          [true, true, 3],
+          [true, true, 2],
+          [true, true, 1],
+        ]
+      : [
+          [true, true, CONTACT_NOTES_MAX],
+          [false, true, CONTACT_NOTES_MAX],
+          [false, false, CONTACT_NOTES_MAX],
+        ];
   let body = "";
-  for (const [an, ln] of levels) {
-    body = make(an, ln);
+  for (const [an, ln, nc] of levels) {
+    body = make(an, ln, nc);
     if (countChars(body) <= EMAIL_BODY_TARGET) break;
   }
   return { subject, body };
@@ -321,17 +363,54 @@ export function buildChat(args: FormatArgs, max: number = CHAT_MAX_CHARS): strin
     return { lines, shrinkable };
   };
 
-  const levels: [boolean, boolean, boolean][] = [
-    [true, true, true],
-    [false, true, true],
-    [false, false, true],
-    [false, false, false],
-  ];
-  for (const [a, b, c] of levels) {
-    const text = make(a, b, c).lines.join("\n");
-    if (countChars(text) <= max) return text;
+  // 連絡事項（contactNotes）が渡されているとき: 1 件目＝要点（医師宛て）／【お願い】（それ以外）、2 件目以降＝事実の行
+  // ケアマネ・その他宛てで 1 件目が依頼文のときだけ【お願い】の行にする。事実の文なら「・」の行にする
+  const notes = normalizeContactNotes(args.contactNotes).map(tidy);
+  const requestFirst = doctor || isRequestNote(notes[0] ?? "");
+  const factNotes = requestFirst ? notes.slice(1) : notes;
+  const makeFromNotes = (factCount: number): { lines: string[]; shrinkable: number[] } => {
+    const lines: string[] = [];
+    const shrinkable: number[] = [];
+    if (doctor) {
+      shrinkable.push(lines.length);
+      lines.push(`${namePrefix}${notes[0]}`);
+    } else {
+      lines.push(`${namePrefix}${md !== "" ? `${md} 訪問` : "訪問"}の報告です。`);
+    }
+    for (const fact of factNotes.slice(0, factCount)) {
+      shrinkable.push(lines.length);
+      lines.push(`・${fact}`);
+    }
+    if (!doctor && requestFirst) {
+      shrinkable.push(lines.length);
+      lines.push(`【お願い】${notes[0]}`);
+    }
+    if (sign !== "") lines.push(sign);
+    return { lines, shrinkable };
+  };
+
+  let last: { lines: string[]; shrinkable: number[] };
+  if (notes.length > 0) {
+    // 依頼文が無い（事実だけ）ときは、事実の行を最低 1 件は残す
+    const minFacts = doctor || requestFirst ? 0 : 1;
+    for (let n = factNotes.length; n >= minFacts; n -= 1) {
+      const text = makeFromNotes(n).lines.join("\n");
+      if (countChars(text) <= max) return text;
+    }
+    last = makeFromNotes(minFacts);
+  } else {
+    const levels: [boolean, boolean, boolean][] = [
+      [true, true, true],
+      [false, true, true],
+      [false, false, true],
+      [false, false, false],
+    ];
+    for (const [a, b, c] of levels) {
+      const text = make(a, b, c).lines.join("\n");
+      if (countChars(text) <= max) return text;
+    }
+    last = make(false, false, false);
   }
-  const last = make(false, false, false);
   const text = shrinkLines(last.lines, last.shrinkable, max).join("\n");
   if (countChars(text) <= max) return text;
   // 最後の手段: 文字数で切る
@@ -348,35 +427,42 @@ export function buildChat(args: FormatArgs, max: number = CHAT_MAX_CHARS): strin
 }
 
 // ---------- 印刷・FAX ----------
+// A4 で 1 枚目に処方内容以外、2 枚目（別紙）に処方内容。並びはこの型のキーの順＝紙の上から下の順。
 
 export type PrintPair = { label: string; value: string };
 
-export type PrintRow = { item: string; result: string; note: string };
+/** 項目｜内容 の 1 行。備考は内容の後ろに「（備考）」として続ける */
+export type PrintRow = { item: string; content: string };
 
 export type PrintTable = { title: string; rows: PrintRow[] };
 
 export type PrintModel = {
+  // 1. 宛名・報告日
+  addressee: string;
+  reportDate: string;
+  // 2. 表題・発信元（送信票の要素は表題の下に小さく 1〜2 行）
   title: string;
-  /** 個人情報の注意文（上段） */
-  notice: string;
-  /** 送信日・宛先・送信元・枚数 */
-  meta: PrintPair[];
-  basicTitle: string;
-  basic: PrintPair[];
-  /** 連絡事項（宛先で変わる 1〜3 行の箇条書き。患者情報の直下に枠で置く） */
+  sender: PrintPair[];
+  /** 送信日・枚数・急ぎは電話で（1 行目）／誤送信時の注意文（2 行目） */
+  sendNote: string[];
+  // 3. 患者・訪問日・次回訪問
+  patientTitle: string;
+  patient: PrintPair[];
+  // 4. 連絡事項（宛先で変わる 1〜3 行の箇条書き。枠で囲む）
   contactTitle: string;
   contact: string[];
-  tableHead: readonly ["項目", "結果", "備考"];
-  /** 服薬管理の表（調剤形態・服薬管理者・管理方法・服薬状況・残薬） */
+  // 5. 服薬管理・生活状況（項目｜内容 の 2 列表。印刷では左右に並べる）
+  tableHead: readonly ["項目", "内容"];
   medication: PrintTable;
-  /** 生活状況の表（食事・排泄・睡眠・運動・移動・日常の傾向） */
   life: PrintTable;
+  // 6. SOAP
   soapTitle: string;
   soap: PrintPair[];
+  // 7. 定型欄
   fixedTitle: string;
   fixed: PrintPair[];
-  /** 処方内容は本文の最後に置く（1 枚に入らなければ 2 枚目に流れてよい） */
-  prescriptionTitle: string;
+  // 8. 別紙：処方内容（印刷では改ページして 2 枚目）
+  appendixTitle: string;
   /** 処方日・処方医の見出し（空なら空文字） */
   prescriptionHeader: string;
   /** 1 行 1 剤 */
@@ -387,8 +473,17 @@ export type PrintModel = {
 export const PRINT_NOTICE =
   "本書には個人情報が含まれます。誤って届いた場合は上記までご連絡のうえ破棄をお願いします。";
 
+/** 枚数の書き方（本紙 1 枚＋別紙 1 枚） */
+export const PRINT_PAGES_TEXT = "2 枚（本紙 1 枚＋別紙 1 枚）";
+
 /** 服薬管理の表に入れる欄（調剤形態は基本情報から別に足す） */
 const MEDICATION_KEYS: readonly string[] = ["medicationManager", "managementMethod", "adherence", "leftoverMedications"];
+
+/** 「内容（備考）」。内容が空なら「—」。備考が空なら内容だけ */
+function contentWithNote(main: string, note: string): string {
+  const n = note.trim();
+  return n === "" || n === DASH ? orDash(main) : `${orDash(main)}（${n}）`;
+}
 
 function printRows(draft: ReportDraft): { medication: PrintRow[]; life: PrintRow[] } {
   const medication: PrintRow[] = [];
@@ -400,27 +495,32 @@ function printRows(draft: ReportDraft): { medication: PrintRow[]; life: PrintRow
       const notes = draft.leftoverMedications
         .filter((r) => r.note.trim() !== "")
         .map((r) => `${r.drugName}：${r.note.trim()}`);
-      target.push({ item: item.label, result: leftoverText(draft, false), note: orDash(notes.join("、")) });
+      target.push({ item: item.label, content: contentWithNote(leftoverText(draft, false), notes.join("、")) });
     } else if (item.key === "mealsPerDay") {
       const m = draft.mealsPerDay;
       const v = m.value.trim();
       const result = v === UNSURE ? UNSURE : v === "" ? DASH : `${v} 回/日`;
-      target.push({ item: item.label, result, note: orDash(m.note.trim()) });
+      target.push({ item: item.label, content: contentWithNote(result, m.note) });
     } else {
       const def = CHOICE_FIELDS.find((f) => f.key === item.key);
       if (!def) continue;
       target.push({
         item: item.label,
-        result: orDash(choiceText(draft, def.key, false)),
-        note: orDash(choiceNote(draft, def.key)),
+        content: contentWithNote(choiceText(draft, def.key, false), choiceNote(draft, def.key)),
       });
     }
   }
   return { medication, life };
 }
 
-/** 連絡事項（1〜3 行）。医師宛て＝処方提案＋残薬、ケアマネ宛て＝お願い＋医師への提案＋服薬状況、その他＝お願い＋事実 */
-function contactItems(draft: ReportDraft, recipientType: RecipientType): string[] {
+/**
+ * 連絡事項（1〜3 行）。contactNotes が渡されて空でなければそれを使う。
+ * 無ければ 医師宛て＝処方提案＋残薬、ケアマネ宛て＝お願い＋医師への提案＋服薬状況、その他＝お願い＋事実
+ */
+function contactItems(args: FormatArgs): string[] {
+  const { draft, recipientType } = args;
+  const given = normalizeContactNotes(args.contactNotes);
+  if (given.length > 0) return given;
   const req = lastSentence(draft.soap.p);
   const items: string[] = [];
   if (req !== DASH) items.push(req);
@@ -433,27 +533,37 @@ function contactItems(draft: ReportDraft, recipientType: RecipientType): string[
   } else {
     items.push(adherenceFact(draft, true, true));
   }
-  return items.slice(0, 3);
+  return items.slice(0, CONTACT_NOTES_MAX);
+}
+
+/** 「ジロー薬局　薬剤師 前田 二郎」→「薬剤師 前田 二郎」（薬局名のあと）。無ければ空文字 */
+function staffPartOf(pharmacy: string): string {
+  return pharmacy
+    .trim()
+    .split(/[\s　]+/)
+    .slice(1)
+    .join(" ");
 }
 
 export function buildPrintModel(args: FormatArgs): PrintModel {
   const { draft, header: h, fixedFields, recipientType, pharmacyContact } = args;
   const p = h.patient;
   const age = calcAge(p.birthDate, h.reportDate);
-  const sender = [h.pharmacy, pharmacyContact.trim()].filter((s) => s !== "").join("　");
   const rows = printRows(draft);
+  const date = orDash(formatJapaneseDate(h.reportDate));
 
   return {
+    addressee: h.addressee !== "" ? h.addressee : fallbackAddressee(recipientType),
+    reportDate: date,
     title: "居宅療養管理指導報告書",
-    notice: PRINT_NOTICE,
-    meta: [
-      { label: "送信日", value: orDash(formatJapaneseDate(h.reportDate)) },
-      { label: "宛先", value: `${h.addressee !== "" ? `${h.addressee}　` : ""}（${recipientType}）` },
-      { label: "送信元", value: orDash(sender) },
-      { label: "枚数", value: "本書のみ 1 枚" },
+    sender: [
+      { label: "薬局", value: orDash(pharmacyNameOf(h.pharmacy)) },
+      { label: "担当", value: orDash(staffPartOf(h.pharmacy)) },
+      { label: "連絡先", value: orDash(pharmacyContact.trim()) },
     ],
-    basicTitle: "基本情報",
-    basic: [
+    sendNote: [`送信日 ${date}　枚数 ${PRINT_PAGES_TEXT}　${URGENT_NOTICE}`, PRINT_NOTICE],
+    patientTitle: "患者・訪問",
+    patient: [
       { label: "患者", value: orDash(p.kana !== "" ? `${p.name}（${p.kana}）` : p.name) },
       { label: "生年月日", value: orDash(p.birthDate !== "" ? formatJapaneseDate(p.birthDate) : "") },
       { label: "年齢", value: age !== null ? `${age}歳` : DASH },
@@ -464,11 +574,11 @@ export function buildPrintModel(args: FormatArgs): PrintModel {
       { label: "処方医", value: orDash(h.prescriptionHeader) },
     ],
     contactTitle: "連絡事項",
-    contact: contactItems(draft, recipientType),
-    tableHead: ["項目", "結果", "備考"],
+    contact: contactItems(args),
+    tableHead: ["項目", "内容"],
     medication: {
       title: "服薬管理",
-      rows: [{ item: "調剤形態", result: orDash(h.dispensingForm), note: DASH }, ...rows.medication],
+      rows: [{ item: "調剤形態", content: orDash(h.dispensingForm) }, ...rows.medication],
     },
     life: { title: "生活状況", rows: rows.life },
     soapTitle: "指導内容",
@@ -484,7 +594,7 @@ export function buildPrintModel(args: FormatArgs): PrintModel {
       { label: FIXED_FIELD_LABELS.genericPreference, value: orDash(fixedFields.genericPreference) },
       { label: FIXED_FIELD_LABELS.medicineNotebook, value: orDash(fixedFields.medicineNotebook) },
     ],
-    prescriptionTitle: "処方内容",
+    appendixTitle: "別紙：処方内容",
     prescriptionHeader: h.prescriptionHeader,
     prescriptionItems:
       h.prescriptionItems === "" ? [] : h.prescriptionItems.split(/\r?\n/).filter((s) => s.trim() !== ""),
@@ -495,15 +605,17 @@ export function buildPrintModel(args: FormatArgs): PrintModel {
 /** PrintModel のすべての文字列に fn を掛ける（名前を戻す unmaskText の適用に使う） */
 export function mapPrintModelText(model: PrintModel, fn: (s: string) => string): PrintModel {
   const pair = (x: PrintPair): PrintPair => ({ label: fn(x.label), value: fn(x.value) });
-  const row = (r: PrintRow): PrintRow => ({ item: fn(r.item), result: fn(r.result), note: fn(r.note) });
+  const row = (r: PrintRow): PrintRow => ({ item: fn(r.item), content: fn(r.content) });
   const table = (t: PrintTable): PrintTable => ({ title: fn(t.title), rows: t.rows.map(row) });
   return {
     ...model,
+    addressee: fn(model.addressee),
+    reportDate: fn(model.reportDate),
     title: fn(model.title),
-    notice: fn(model.notice),
-    meta: model.meta.map(pair),
-    basicTitle: fn(model.basicTitle),
-    basic: model.basic.map(pair),
+    sender: model.sender.map(pair),
+    sendNote: model.sendNote.map(fn),
+    patientTitle: fn(model.patientTitle),
+    patient: model.patient.map(pair),
     contactTitle: fn(model.contactTitle),
     contact: model.contact.map(fn),
     medication: table(model.medication),
@@ -512,7 +624,7 @@ export function mapPrintModelText(model: PrintModel, fn: (s: string) => string):
     soap: model.soap.map(pair),
     fixedTitle: fn(model.fixedTitle),
     fixed: model.fixed.map(pair),
-    prescriptionTitle: fn(model.prescriptionTitle),
+    appendixTitle: fn(model.appendixTitle),
     prescriptionHeader: fn(model.prescriptionHeader),
     prescriptionItems: model.prescriptionItems.map(fn),
     concomitant: fn(model.concomitant),

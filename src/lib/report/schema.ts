@@ -103,6 +103,11 @@ export const ReportDraftSchema = z.object({
   mobility: choiceField(ABILITY4, "移動"),
   dailyTendency: choiceField(TENDENCY, "日常でみられる傾向"),
   soap: SoapSchema,
+  contactNotes: z
+    .array(z.string())
+    .describe(
+      "連絡事項。宛先に向けた要点を1〜3件、各1文（40字前後）。Pの内容から抜き出し、会話に無い事実や依頼は書かない。書くことが無ければ「特記事項なし」の1件",
+    ),
   evidence: EvidenceSchema,
   basicInfoSuggestions: BasicInfoSuggestionsSchema,
 });

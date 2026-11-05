@@ -22,3 +22,6 @@
 | 2026-11-05 17:26 | claude-opus-5-5 | low | 13/13 (100%) | 2/2 | 13.1 | 959/1255 | 宛先=ケアマネ fixture=yamamoto-hanako 提出前の最終評価 |
 | 2026-11-05 17:26 | claude-opus-5-5 | low | 13/13 (100%) | 2/2 | 10.9 | 1073/1348 | 宛先=ケアマネ fixture=yamamoto-hanako-kikikaeshi 提出前の最終評価 |
 | 2026-11-05 17:27 | claude-opus-5-5 | low | 13/13 (100%) | 2/2 | 12.0 | 1021/1411 | 宛先=医療機関 fixture=sasaki-kiyoshi 提出前の最終評価 |
+| 2026-11-05 20:17 | claude-opus-5-5 | low | 13/13 (100%) | 2/2 | 14.7 | 959/1331 | 宛先=ケアマネ fixture=yamamoto-hanako 連絡事項A案の確認 |
+| 2026-11-05 20:17 | claude-opus-5-5 | low | 13/13 (100%) | 2/2 | 16.9 | 1073/1400 | 宛先=ケアマネ fixture=yamamoto-hanako-kikikaeshi 連絡事項A案の確認 |
+| 2026-11-05 20:17 | claude-opus-5-5 | low | 13/13 (100%) | 2/2 | 14.9 | 1021/1595 | 宛先=医療機関 fixture=sasaki-kiyoshi 連絡事項A案の確認 |

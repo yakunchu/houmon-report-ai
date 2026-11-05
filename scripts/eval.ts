@@ -20,6 +20,7 @@ import { buildUserMessage } from "../src/lib/report/prompt";
 import {
   checkEvidence,
   checkQuotes,
+  compareContactNotes,
   compareDraft,
   compareSuggestions,
   summarize,
@@ -181,7 +182,12 @@ async function main(): Promise<number> {
   const profile = ProfileSchema.parse(JSON.parse(readFileSync(resolve(dir, "profile.json"), "utf8")));
   const expectedJson: unknown = JSON.parse(readFileSync(resolve(dir, "expected.json"), "utf8"));
   // 提案の見本は任意（無い古い見本でも動く）。合格ラインの比較（compareDraft）には含めない
-  const expected = ReportDraftSchema.omit({ evidence: true, basicInfoSuggestions: true }).parse(expectedJson);
+  const expected = ReportDraftSchema.omit({ evidence: true, basicInfoSuggestions: true, contactNotes: true }).parse(expectedJson);
+  // 連絡事項の見本も任意（参考値。合格ラインには含めない）
+  const expectedContactNotes =
+    typeof expectedJson === "object" && expectedJson !== null && "contactNotes" in expectedJson
+      ? z.array(z.string()).parse((expectedJson as { contactNotes: unknown }).contactNotes)
+      : undefined;
   const expectedSuggestions =
     typeof expectedJson === "object" && expectedJson !== null && "basicInfoSuggestions" in expectedJson
       ? BasicInfoSuggestionsSchema.parse((expectedJson as { basicInfoSuggestions: unknown }).basicInfoSuggestions)
@@ -254,6 +260,7 @@ async function main(): Promise<number> {
   const rows = compareDraft(expected, actual);
   const sum = summarize(rows);
   const suggestionRows = expectedSuggestions ? compareSuggestions(expectedSuggestions, actual.basicInfoSuggestions) : null;
+  const contactRows = compareContactNotes(expectedContactNotes, actual.contactNotes);
   const sQuotes = checkQuotes(actual.soap.s, transcript);
   const evQuotes = checkEvidence(actual.evidence, transcript);
   const nameLeak = (() => {
@@ -292,6 +299,17 @@ async function main(): Promise<number> {
     );
   }
 
+  console.log("\n## 連絡事項（AI）（参考。人が読んで確認する。合格判定には使わない）\n");
+  console.log(`- 件数: ${actual.contactNotes.length}（指示は 1〜3 件。画面では先頭 3 件に丸める）`);
+  if (contactRows.length > 0) {
+    console.log("\n| # | 見本 | AI | 類似度 |");
+    console.log("|---|---|---|---|");
+    for (const r of contactRows) {
+      console.log(`| ${r.index} | ${cell(r.expected ?? "")} | ${cell(r.actual ?? "")} | ${r.similarity === null ? "—" : r.similarity.toFixed(2)} |`);
+    }
+  }
+  if (!expectedContactNotes) console.log("- この見本には contactNotes がありません（AI の出力のみ表示）");
+
   console.log("\n## S の引用の実在");
   for (const q of sQuotes) console.log(`- ${q.found ? "○ あり" : "× なし"}: 「${q.quote}」`);
   if (sQuotes.length === 0) console.log("- × 引用なし（S が空、または引用にできる文字がありません）");
@@ -311,7 +329,7 @@ async function main(): Promise<number> {
   // --- 保存 ---
   writeFileSync(
     resolve(root, "eval-results", `${stem}.json`),
-    JSON.stringify({ request: requestSummary, response: res, comparison: { rows, summary: sum, suggestions: { expected: expectedSuggestions, actual: actual.basicInfoSuggestions, rows: suggestionRows }, sQuotes, evidenceQuotes: evQuotes, unsure, nameLeak } }, null, 2) + "\n",
+    JSON.stringify({ request: requestSummary, response: res, comparison: { rows, summary: sum, contactNotes: { expected: expectedContactNotes ?? null, actual: actual.contactNotes, rows: contactRows }, suggestions: { expected: expectedSuggestions, actual: actual.basicInfoSuggestions, rows: suggestionRows }, sQuotes, evidenceQuotes: evQuotes, unsure, nameLeak } }, null, 2) + "\n",
     "utf8",
   );
   const sFound = `${sQuotes.filter((q) => q.found).length}/${sQuotes.length}${sQuotes.length === 0 ? " (S空)" : ""}`;

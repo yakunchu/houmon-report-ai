@@ -47,7 +47,7 @@ import {
   riskyPrescriptionLines,
 } from "@/lib/ui/basic-info";
 import { normalizePrescription } from "@/lib/ui/prescription";
-import { listUnsureLabels } from "@/lib/ui/draft-utils";
+import { listUnsureLabels, normalizeContactNotes, tidyDraft } from "@/lib/ui/draft-utils";
 import { useOnlineStatus, useServerHealth } from "@/lib/ui/health";
 import {
   basicInfoToPatient,
@@ -733,6 +733,8 @@ function ReportAppInner() {
       includePatientName,
       // 患者名を入れないとき、【家族N】を実名に戻さず続柄にする（辞書の family と同じ並び）
       familyRelations: (buildDictionary(basic).family ?? []).map((f) => f.relation),
+      // 連絡事項: 空の件を除き先頭 3 件。名前を戻すのは下の back() が行う
+      contactNotes: normalizeContactNotes(session.draft.contactNotes),
     };
     const back = (s: string) => unmaskText(s, session.tokens);
     const mail = buildEmail(args);
@@ -855,6 +857,8 @@ function ReportAppInner() {
               transcript={session.transcript}
               stale={sessionStale}
               onProceed={() => {
+                // 連絡事項の空の件を除き、先頭 3 件にしてから出力へ進む
+                updateDraft(tidyDraft(session.draft));
                 setFinalizing(true);
                 scrollToId("step-4");
               }}

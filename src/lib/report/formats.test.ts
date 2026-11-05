@@ -1,12 +1,8 @@
 import { describe, expect, it } from "vitest";
-import sasakiExpected from "../../../fixtures/sasaki-kiyoshi/expected.json";
-import sasakiProfile from "../../../fixtures/sasaki-kiyoshi/profile.json";
-import yamamotoExpected from "../../../fixtures/yamamoto-hanako/expected.json";
 import yamamotoProfile from "../../../fixtures/yamamoto-hanako/profile.json";
 import { unmaskText } from "../mask";
 import type { MaskToken } from "../mask";
 import { REPORT_ORDER } from "./fields";
-import type { FixedFields, ReportHeader } from "./format";
 import {
   anonymizePatientTokens,
   buildChat,
@@ -16,67 +12,33 @@ import {
   EMAIL_BODY_TARGET,
   FAMILY_FALLBACK,
   firstSentence,
+  isRequestNote,
   lastSentence,
   politeForEmail,
   mapPrintModelText,
+  normalizeContactNotes,
   pharmacyNameOf,
   PRINT_NOTICE,
+  PRINT_PAGES_TEXT,
   staffNameOf,
   splitSentences,
   truncateText,
+  URGENT_NOTICE,
   type FormatArgs,
 } from "./formats";
-import type { RecipientType, ReportDraft } from "./schema";
+import { SAMPLE_PHARMACY_CONTACT, sampleFormatArgs } from "./sample-args";
+import type { ReportDraft } from "./schema";
 
-// すべて架空のデータ（fixtures/ の見本）。expected.json には根拠（evidence）が無いので空で補う。
-const EMPTY_EVIDENCE = { medication: "", meals: "", excretion: "", sleep: "", mobility: "", tendency: "" };
-const toDraft = (x: unknown): ReportDraft => ({ ...(x as object), evidence: EMPTY_EVIDENCE }) as ReportDraft;
+// すべて架空のデータ（fixtures/ の見本。sample-args.ts が組む）。
+const CONTACT = SAMPLE_PHARMACY_CONTACT;
 
-type Profile = typeof yamamotoProfile;
-
-function headerOf(p: Profile, addressee: string): ReportHeader {
-  return {
-    addressee,
-    reportDate: p.reportDate,
-    nextVisitDate: p.nextVisitDate,
-    patient: {
-      name: p.patient.name,
-      kana: p.patient.kana,
-      birthDate: p.patient.birthDate,
-      sex: p.patient.sex,
-      address: p.patient.address,
-    },
-    pharmacy: p.pharmacy,
-    visitFrequency: p.visitFrequency.note ? `${p.visitFrequency.choice}（${p.visitFrequency.note}）` : p.visitFrequency.choice,
-    dispensingForm: p.dispensingForm,
-    prescriptionHeader: `処方日 ${p.prescription.date} ${p.prescription.prescriber}`,
-    prescriptionItems: p.prescription.items.map((i) => [i.drug, i.dose, i.usage, i.days].join("　")).join("\n"),
-    concomitant: p.prescription.concomitant,
-  };
-}
-
-const FIXED: FixedFields = {
-  counselingTarget: "本人・家族",
-  genericPreference: "後発医薬品での処方を希望する事を確認した。",
-  medicineNotebook: "お薬手帳にシールを貼付。",
-};
-
-const CONTACT = "TEL 096-000-0000 / FAX 096-000-0001";
-
+/**
+ * 既定では連絡事項（contactNotes）を渡さず、従来どおり P の文から組む場合を調べる。
+ * 渡す場合は over で contactNotes を指定する。
+ */
 function argsOf(who: "yamamoto" | "sasaki", over: Partial<FormatArgs> = {}): FormatArgs {
-  const yamamoto = who === "yamamoto";
-  const recipientType: RecipientType = yamamoto ? "ケアマネ" : "医療機関";
-  const profile = (yamamoto ? yamamotoProfile : sasakiProfile) as Profile;
-  const addressee = yamamoto ? profile.recipients.careManager : profile.recipients.doctor;
-  return {
-    draft: toDraft(yamamoto ? yamamotoExpected : sasakiExpected),
-    header: headerOf(profile, addressee),
-    fixedFields: FIXED,
-    recipientType,
-    pharmacyContact: CONTACT,
-    includePatientName: false,
-    ...over,
-  };
+  const base = sampleFormatArgs(who === "yamamoto" ? "yamamoto-hanako" : "sasaki-kiyoshi");
+  return { ...base, includePatientName: false, contactNotes: undefined, ...over };
 }
 
 describe("文の切り出し", () => {
@@ -296,18 +258,65 @@ describe("チャット", () => {
 });
 
 describe("印刷・FAX の構造", () => {
-  it("上段に送信日・宛先・送信元・枚数と注意文があり、送信元に連絡先が入る", () => {
+  it("並びは 宛名→報告日→表題→発信元・送信票→患者→連絡事項→服薬管理→生活状況→SOAP→定型→別紙（処方内容）", () => {
     const m = buildPrintModel(argsOf("yamamoto"));
-    expect(m.meta.map((x) => x.label)).toEqual(["送信日", "宛先", "送信元", "枚数"]);
-    expect(m.meta[0].value).toBe("2026年11月5日");
-    expect(m.meta[1].value).toContain(yamamotoProfile.recipients.careManager);
-    expect(m.meta[2].value).toContain(CONTACT);
-    expect(m.notice).toBe(PRINT_NOTICE);
+    expect(Object.keys(m)).toEqual([
+      "addressee",
+      "reportDate",
+      "title",
+      "sender",
+      "sendNote",
+      "patientTitle",
+      "patient",
+      "contactTitle",
+      "contact",
+      "tableHead",
+      "medication",
+      "life",
+      "soapTitle",
+      "soap",
+      "fixedTitle",
+      "fixed",
+      "appendixTitle",
+      "prescriptionHeader",
+      "prescriptionItems",
+      "concomitant",
+    ]);
+    expect(m.title).toBe("居宅療養管理指導報告書");
+    expect(m.contactTitle).toBe("連絡事項");
+    expect(m.appendixTitle).toBe("別紙：処方内容");
   });
 
-  it("基本情報には患者・生年月日・年齢・性別・訪問日・次回訪問・訪問頻度・処方医が入る（名前は常に入る）", () => {
+  it("宛名は宛先の名称、無ければ宛先種別の汎用の宛名。報告日は和暦でない年月日", () => {
+    const m = buildPrintModel(argsOf("yamamoto"));
+    expect(m.addressee).toBe(yamamotoProfile.recipients.careManager);
+    expect(m.reportDate).toBe("2026年11月5日");
+    const a = argsOf("yamamoto");
+    expect(buildPrintModel({ ...a, header: { ...a.header, addressee: "" } }).addressee).toBe("ご担当のケアマネジャー様");
+    expect(buildPrintModel({ ...a, header: { ...a.header, addressee: "" }, recipientType: "医療機関" }).addressee).toBe(
+      "ご担当の先生",
+    );
+  });
+
+  it("発信元は 薬局・担当・連絡先。送信票は小さく 2 行（送信日・枚数・急ぎは電話で／誤送信時の注意文）", () => {
+    const m = buildPrintModel(argsOf("yamamoto"));
+    expect(m.sender).toEqual([
+      { label: "薬局", value: "ジロー薬局" },
+      { label: "担当", value: "薬剤師 前田 二郎" },
+      { label: "連絡先", value: CONTACT },
+    ]);
+    expect(m.sendNote).toHaveLength(2);
+    expect(m.sendNote[0]).toContain("送信日 2026年11月5日");
+    expect(m.sendNote[0]).toContain(PRINT_PAGES_TEXT);
+    expect(m.sendNote[0]).toContain(URGENT_NOTICE);
+    expect(m.sendNote[1]).toBe(PRINT_NOTICE);
+    // 連絡先が空なら「—」
+    expect(buildPrintModel(argsOf("yamamoto", { pharmacyContact: " " })).sender[2].value).toBe("—");
+  });
+
+  it("患者・訪問には患者・生年月日・年齢・性別・訪問日・次回訪問・訪問頻度・処方医が入る（名前は常に入る）", () => {
     const m = buildPrintModel(argsOf("yamamoto", { includePatientName: false }));
-    expect(m.basic.map((x) => x.label)).toEqual([
+    expect(m.patient.map((x) => x.label)).toEqual([
       "患者",
       "生年月日",
       "年齢",
@@ -317,11 +326,11 @@ describe("印刷・FAX の構造", () => {
       "訪問頻度",
       "処方医",
     ]);
-    expect(m.basic[0].value).toContain("山本 花子");
-    expect(m.basic[2].value).toBe("86歳");
+    expect(m.patient[0].value).toContain("山本 花子");
+    expect(m.patient[2].value).toBe("86歳");
   });
 
-  it("連絡事項は宛先で変わる（医師＝処方提案＋残薬、ケアマネ＝お願い＋医師への提案＋服薬状況）", () => {
+  it("連絡事項は宛先で変わる（contactNotes が無いとき: 医師＝処方提案＋残薬、ケアマネ＝お願い＋医師への提案＋服薬状況）", () => {
     const care = buildPrintModel(argsOf("yamamoto")).contact;
     const doc = buildPrintModel(argsOf("sasaki")).contact;
     expect(care).toHaveLength(3);
@@ -344,9 +353,21 @@ describe("印刷・FAX の構造", () => {
     expect(asDoctor[1].startsWith("残薬：")).toBe(true);
   });
 
-  it("会話から記入する欄は「服薬管理」と「生活状況」の 2 つの表で、各行は 項目／結果／備考", () => {
+  it("連絡事項は contactNotes が渡されて空でなければそれを優先する（空白・空行は除き、最大 3 行）。空配列なら派生に戻る", () => {
+    const derived = buildPrintModel(argsOf("yamamoto")).contact;
+    const given = buildPrintModel(argsOf("yamamoto", { contactNotes: ["  一行目。 ", "", "二行目。", "三行目。", "四行目。"] })).contact;
+    expect(given).toEqual(["一行目。", "二行目。", "三行目。"]);
+    expect(buildPrintModel(argsOf("yamamoto", { contactNotes: [] })).contact).toEqual(derived);
+    expect(buildPrintModel(argsOf("yamamoto", { contactNotes: ["", "  "] })).contact).toEqual(derived);
+    expect(normalizeContactNotes(undefined)).toEqual([]);
+    // 見本（fixtures の expected.json）の contactNotes をそのまま使う引数なら、AI が抜き出した 3 行が出る
+    const sample = sampleFormatArgs("yamamoto-hanako");
+    expect(buildPrintModel(sample).contact).toEqual(sample.contactNotes);
+  });
+
+  it("服薬管理と生活状況は 項目｜内容 の 2 列表。備考は内容の後ろに「（備考）」として続く", () => {
     const m = buildPrintModel(argsOf("yamamoto"));
-    expect(m.tableHead).toEqual(["項目", "結果", "備考"]);
+    expect(m.tableHead).toEqual(["項目", "内容"]);
     expect(m.medication.title).toBe("服薬管理");
     expect(m.life.title).toBe("生活状況");
     expect(m.medication.rows.map((r) => r.item)).toEqual(["調剤形態", "服薬管理者", "管理方法", "服薬状況", "残薬"]);
@@ -355,27 +376,111 @@ describe("印刷・FAX の構造", () => {
         .map((x) => x.label)
         .filter((l) => !["服薬管理者", "管理方法", "服薬状況", "残薬"].includes(l)),
     );
-    const byItem = Object.fromEntries([...m.medication.rows, ...m.life.rows].map((r) => [r.item, r]));
-    expect(byItem["調剤形態"].result).toBe(yamamotoProfile.dispensingForm);
-    expect(byItem["服薬状況"]).toEqual({ item: "服薬状況", result: "悪", note: "朝の飲み忘れ 週3回程度" });
-    expect(byItem["食事・回数"].result).toBe("3 回/日");
-    expect(byItem["睡眠・日中"].result).toBe("有 1時間0分");
-    expect(byItem["残薬"].result).toBe("朝食後の一包化分 4日分、センノシド錠 要確認");
-    expect(byItem["食事・量"].note).toBe("—");
+    for (const r of [...m.medication.rows, ...m.life.rows]) expect(Object.keys(r)).toEqual(["item", "content"]);
+    const byItem = Object.fromEntries([...m.medication.rows, ...m.life.rows].map((r) => [r.item, r.content]));
+    expect(byItem["調剤形態"]).toBe(yamamotoProfile.dispensingForm);
+    expect(byItem["服薬状況"]).toBe("悪（朝の飲み忘れ 週3回程度）");
+    expect(byItem["食事・回数"]).toBe("3 回/日");
+    expect(byItem["睡眠・日中"]).toBe("有 1時間0分（昼食後に昼寝）");
+    expect(byItem["残薬"]).toBe("朝食後の一包化分 4日分、センノシド錠 要確認（センノシド錠：未使用分）");
+    expect(byItem["食事・量"]).toBe("普通");
   });
 
-  it("SOAP・定型欄のあとに処方内容が来る。mapPrintModelText はすべての文字列に関数を掛ける", () => {
+  it("SOAP・定型欄のあとに別紙（処方内容）が来る。mapPrintModelText はすべての文字列に関数を掛ける", () => {
     const m = buildPrintModel(argsOf("sasaki"));
     expect(m.soap.map((x) => x.label)).toEqual(["S", "O", "A", "P"]);
     expect(m.fixed.map((x) => x.label)).toEqual(["指導相手", "後発品希望", "お薬手帳"]);
-    expect(m.prescriptionTitle).toBe("処方内容");
-    const keys = Object.keys(m);
-    expect(keys.indexOf("prescriptionTitle")).toBeGreaterThan(keys.indexOf("fixedTitle"));
+    expect(m.prescriptionItems).toHaveLength(5);
+    expect(m.concomitant).toBe("なし");
     const upper = mapPrintModelText(m, (s) => s.replaceAll("佐々木", "●●●"));
     expect(JSON.stringify(upper)).not.toContain("佐々木");
     expect(JSON.stringify(m)).toContain("佐々木");
     expect(JSON.stringify(upper.medication)).toContain("服薬状況");
     expect(upper.contact).toHaveLength(m.contact.length);
+    expect(upper.sender).toHaveLength(m.sender.length);
+    expect(upper.sendNote).toHaveLength(2);
+    expect(Object.keys(upper)).toEqual(Object.keys(m));
+  });
+});
+
+describe("連絡事項（contactNotes）を渡したときのメール・チャット", () => {
+  const care = ["ヘルパーの訪問時に服薬確認の声かけをご検討いただきたい。", "残薬4日分は次回処方で日数調整を医師に提案した。", "服薬状況は悪で、朝の飲み忘れがある。"];
+  const doc = ["降圧薬・利尿薬の用量と服用時刻のご確認をご検討いただきたい。", "夕食後の飲み忘れが週2回程度ある。"];
+
+  it("メール: 要旨は contactNotes を丁寧な形にして使う（1 件目＝お願い、2 件目以降＝事実）", () => {
+    const { body } = buildEmail(argsOf("yamamoto", { contactNotes: care }));
+    expect(body).toContain("ヘルパーの訪問時に服薬確認の声かけをご検討いただけますと幸いです。");
+    expect(body).toContain("残薬4日分は次回処方で日数調整を医師に提案しました。");
+    expect(body).toContain("服薬状況は悪で、朝の飲み忘れがある。");
+    // 派生の事実行（服薬状況：／残薬：）は出ない
+    expect(body).not.toContain("服薬状況：");
+    expect(body.indexOf("ご検討いただけますと幸いです。")).toBeLessThan(body.indexOf("医師に提案しました。"));
+  });
+
+  it("メール: 300 字を超えるときは contactNotes の後ろの行から減らす（1 件目は残す）", () => {
+    const long = ["あ".repeat(80) + "ご検討いただきたい。", "い".repeat(80) + "。", "う".repeat(80) + "。"];
+    const { body } = buildEmail(argsOf("yamamoto", { contactNotes: long }));
+    expect(body).toContain("ご検討いただけますと幸いです。");
+    expect(body).not.toContain("う".repeat(80));
+    expect(Array.from(body.replace(/\n/g, "")).length).toBeLessThanOrEqual(EMAIL_BODY_TARGET);
+  });
+
+  it("チャット（医師宛て）: 1 行目は 1 件目、2 件目以降は「・」の事実の行。【お願い】は無い", () => {
+    const lines = buildChat(argsOf("sasaki", { contactNotes: doc })).split("\n");
+    expect(lines[0]).toBe(doc[0]);
+    expect(lines[1]).toBe(`・${doc[1]}`);
+    expect(lines.some((l) => l.startsWith("【お願い】"))).toBe(false);
+  });
+
+  it("チャット（ケアマネ宛て）: 【お願い】は 1 件目、事実の行は 2 件目以降。200 字以内", () => {
+    const text = buildChat(argsOf("yamamoto", { contactNotes: care }));
+    const lines = text.split("\n");
+    expect(lines[0]).toContain("11/5 訪問の報告です。");
+    expect(lines).toContain(`・${care[1]}`);
+    expect(lines).toContain(`【お願い】${care[0]}`);
+    expect(Array.from(text.replace(/\n/g, "")).length).toBeLessThanOrEqual(CHAT_MAX_CHARS);
+  });
+
+  it("チャット: 長いときは事実の行を後ろから省く。それでも長ければ切り詰めて 200 字（改行を除く）に収める", () => {
+    const long = ["あ".repeat(60) + "をお願いしたい。", "い".repeat(60) + "。", "う".repeat(60) + "。"];
+    const text = buildChat(argsOf("yamamoto", { contactNotes: long }));
+    expect(Array.from(text.replace(/\n/g, "")).length).toBeLessThanOrEqual(CHAT_MAX_CHARS);
+    expect(text).toContain("【お願い】あ");
+    const huge = buildChat(argsOf("yamamoto", { contactNotes: ["あ".repeat(400)] }));
+    expect(Array.from(huge.replace(/\n/g, "")).length).toBeLessThanOrEqual(CHAT_MAX_CHARS);
+  });
+
+  it("チャット（その他宛て）: 1 件目が依頼文でなければ【お願い】は付けず、すべて「・」の事実の行にする", () => {
+    const facts = ["残薬4日分がある。", "朝の飲み忘れが週3回程度ある。"];
+    const text = buildChat(argsOf("yamamoto", { recipientType: "その他", contactNotes: facts }));
+    const lines = text.split("\n");
+    expect(lines.some((l) => l.startsWith("【お願い】"))).toBe(false);
+    expect(lines).toContain(`・${facts[0]}`);
+    expect(lines).toContain(`・${facts[1]}`);
+  });
+
+  it("依頼文の判定（isRequestNote）", () => {
+    expect(isRequestNote("服薬確認をお願いしたい。")).toBe(true);
+    expect(isRequestNote("声かけをご検討いただきたい。")).toBe(true);
+    expect(isRequestNote("残薬4日分がある。")).toBe(false);
+    expect(isRequestNote("残薬4日分は次回処方で日数調整を医師に提案した。")).toBe(false);
+  });
+
+  it("チャット: 患者名を入れない指定のとき、contactNotes の中の記号も一般名にする", () => {
+    const text = buildChat(argsOf("yamamoto", { contactNotes: ["【患者A】様の服薬確認をお願いしたい。"] }));
+    expect(text).not.toContain("【患者A】");
+    expect(text).toContain("患者様");
+  });
+});
+
+describe("注意書き", () => {
+  it("急ぎ・急変は電話で、の文言", () => {
+    expect(URGENT_NOTICE).toBe("急ぎ・急変は電話で。");
+  });
+
+  it("送信票の注意文と枚数の書き方（印刷は本紙 1 枚＋別紙 1 枚）", () => {
+    expect(PRINT_NOTICE).toContain("誤って届いた場合");
+    expect(PRINT_PAGES_TEXT).toContain("別紙");
   });
 });
 

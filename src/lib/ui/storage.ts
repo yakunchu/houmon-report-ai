@@ -5,6 +5,7 @@
 import type { MaskToken } from "@/lib/mask/types";
 import { PATIENT_STORE_KEY, type Patient } from "@/lib/patients/types";
 import { RECIPIENT_TYPES, ReportDraftSchema, type RecipientType, type ReportDraft } from "@/lib/report/schema";
+import { fillMissingContactNotes } from "./draft-utils";
 import { EMPTY_BASIC, type BasicInfo } from "./types";
 
 const PREFIX = "houmon-report-ai:";
@@ -155,7 +156,7 @@ export function loadSession(): DraftSession | null {
   const data = parseJson(loadRaw("session"));
   if (typeof data !== "object" || data === null) return null;
   const s = data as Record<string, unknown>;
-  const draft = ReportDraftSchema.safeParse(s.draft);
+  const draft = ReportDraftSchema.safeParse(fillMissingContactNotes(s.draft));
   if (!draft.success) return null;
   if (typeof s.transcript !== "string" || !Array.isArray(s.tokens)) return null;
   if (!(RECIPIENT_TYPES as readonly string[]).includes(s.recipientType as string)) return null;

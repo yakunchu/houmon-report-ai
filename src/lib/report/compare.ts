@@ -5,6 +5,7 @@
  * - 残薬は件数と各件の「要確認」の一致で match、本文の類似度も出す
  * - 引用（S と evidence）は会話テキストに実在するかを別関数で確認する
  * - basicInfoSuggestions（基本情報の提案）は合格ライン（選択式一致率）に含めず、別関数 compareSuggestions で見る
+ * - contactNotes（連絡事項）も合格ラインに含めない。見本が無くても動く参考表示（compareContactNotes）
  */
 import { CHOICE_FIELDS, EVIDENCE_LABELS, REPORT_ORDER, SOAP_LABELS, type EvidenceKey } from "./fields";
 import { UNSURE, type BasicInfoSuggestions, type Evidence, type LeftoverMedication, type ReportDraft } from "./schema";
@@ -31,6 +32,15 @@ export type SuggestionRow = {
   /** 選択式は正規化一致。自由記述の欄は null */
   match: boolean | null;
   /** 自由記述（備考・家族）の文字 bigram 類似度。選択式は null */
+  similarity: number | null;
+};
+
+/** 連絡事項の参考表示の 1 行。見本が無い（または件数が少ない）ときは expected が null */
+export type ContactNoteRow = {
+  index: number;
+  expected: string | null;
+  actual: string | null;
+  /** 両方あるときだけ。文字 bigram の Jaccard 類似度。合格判定には使わない */
   similarity: number | null;
 };
 
@@ -121,7 +131,7 @@ function leftoverRow(expected: readonly LeftoverMedication[], actual: readonly L
 }
 
 /** 見本と下書きを欄ごとに比較する。行の並びは報告書の並び（見本の順）。basicInfoSuggestions は見ない */
-type ComparableDraft = Omit<ReportDraft, "evidence" | "basicInfoSuggestions">;
+type ComparableDraft = Omit<ReportDraft, "evidence" | "basicInfoSuggestions" | "contactNotes">;
 export function compareDraft(expected: ComparableDraft, actual: ComparableDraft): CompareRow[] {
   const rows: CompareRow[] = [];
   for (const def of REPORT_ORDER) {
@@ -180,6 +190,21 @@ export function compareSuggestions(expected: BasicInfoSuggestions, actual: Basic
     text("dispensingForm.note", "調剤形態・備考", expected.dispensingForm.note, actual.dispensingForm.note),
     text("family", "家族", expected.family, actual.family),
   ];
+}
+
+/**
+ * 連絡事項（AI）を件ごとに並べる。見本（expected）は任意で、無くても落ちない。
+ * 件数が違うときは多い方に合わせて行を作る。人が読むための表で、合格判定には使わない。
+ */
+export function compareContactNotes(expected: readonly string[] | undefined, actual: readonly string[]): ContactNoteRow[] {
+  const n = Math.max(expected?.length ?? 0, actual.length);
+  const rows: ContactNoteRow[] = [];
+  for (let i = 0; i < n; i++) {
+    const e = expected?.[i] ?? null;
+    const a = actual[i] ?? null;
+    rows.push({ index: i + 1, expected: e, actual: a, similarity: e !== null && a !== null ? bigramJaccard(e, a) : null });
+  }
+  return rows;
 }
 
 /** 「」で区切った引用を取り出す。「」が無ければ全体を 1 件の引用とみなす */

@@ -112,6 +112,7 @@ function draftWith(overrides: SuggestionOverrides = {}): ReportDraft {
     mobility: choice("あまりできない"),
     dailyTendency: choice("有"),
     soap: { s: "", o: "", a: "", p: "" },
+    contactNotes: ["特記事項なし"],
     evidence: { medication: "", meals: "", excretion: "", sleep: "", mobility: "", tendency: "" },
     basicInfoSuggestions: {
       visitFrequency: overrides.visitFrequency ?? choice("その他", "28日毎"),
