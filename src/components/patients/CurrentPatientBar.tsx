@@ -37,18 +37,18 @@ export function CurrentPatientBar({
   return (
     <div
       className={`mt-4 rounded-xl border-2 p-3 sm:p-4 ${
-        needsSave && canSave ? "border-amber-700 bg-amber-50" : "border-slate-300 bg-slate-50"
+        needsSave && canSave ? "border-akane bg-raised" : "border-line bg-surface"
       }`}
       aria-label="いま作業中の患者"
     >
-      <p className="text-slate-800">いま作業中の患者</p>
-      <p className="text-2xl font-bold text-slate-900">{name ? `${name} さん` : "（氏名が未入力です）"}</p>
-      <p className={`mt-1 font-bold ${needsSave ? "text-amber-950" : "text-slate-900"}`}>
+      <p className="text-ink">いま作業中の患者</p>
+      <p className="text-2xl font-bold text-ink">{name ? `${name} さん` : "（氏名が未入力です）"}</p>
+      <p className={`mt-1 font-bold ${needsSave ? "text-akane" : "text-ink"}`}>
         {needsSave ? <span aria-hidden="true">⚠ </span> : null}
         {status}
       </p>
       {!saved ? (
-        <p className="mt-1 text-slate-800">
+        <p className="mt-1 text-ink">
           登録すると、次回からリストから選ぶだけで基本情報が入ります。氏名を入れて「患者リストに保存」を押してください。
         </p>
       ) : null}
@@ -64,7 +64,7 @@ export function CurrentPatientBar({
         ) : null}
       </div>
       {notice ? (
-        <p role="status" className="mt-2 font-bold text-slate-900">
+        <p role="status" className="mt-2 font-bold text-ink">
           {notice}
         </p>
       ) : null}

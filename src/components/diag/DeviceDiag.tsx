@@ -168,24 +168,24 @@ export function DeviceDiag() {
 
   return (
     <main className="mx-auto max-w-3xl space-y-4 p-4">
-      <h1 className="text-3xl font-bold text-slate-900">端末診断</h1>
-      <p className="text-slate-800">
+      <h1 className="font-display text-3xl font-bold text-ai">端末診断</h1>
+      <p className="text-ink">
         この iPhone / PC で、録音と端末内の音声認識が使えるかを確かめる画面です。患者さんの情報や会話は入力しないでください。録音した音声は端末の中にだけ置き、画面を閉じると消えます。
       </p>
 
       <Section id="diag-static" title="この端末でできること">
         {diag === null ? (
-          <p className="text-slate-700">調べています…</p>
+          <p className="text-ink-muted">調べています…</p>
         ) : (
-          <dl className="divide-y-2 divide-slate-200">
+          <dl className="divide-y-2 divide-line">
             {diag.rows.map((r) => (
               <div key={r.label} className="flex flex-wrap items-baseline gap-x-3 py-2">
-                <dt className="font-bold text-slate-900">
+                <dt className="font-bold text-ink">
                   <span aria-hidden="true">{r.ok === null ? "・" : r.ok ? "○" : "×"} </span>
                   <span className="sr-only">{r.ok === null ? "" : r.ok ? "使える: " : "使えない: "}</span>
                   {r.label}
                 </dt>
-                <dd className="text-slate-800">{r.value}</dd>
+                <dd className="text-ink">{r.value}</dd>
               </div>
             ))}
           </dl>
@@ -204,21 +204,21 @@ export function DeviceDiag() {
             {busy === "speech" ? "聞き取り中…（話してください）" : "③ 端末内の音声認識を試す"}
           </Button>
         </div>
-        {diag && diag.speechNote ? <p className="mt-3 text-slate-800">③ は使えません: {diag.speechNote}</p> : null}
+        {diag && diag.speechNote ? <p className="mt-3 text-ink">③ は使えません: {diag.speechNote}</p> : null}
         {busy === "speech" ? (
-          <p className="mt-3 text-slate-800">
+          <p className="mt-3 text-ink">
             「きょうは いい てんき です」など、患者さんの情報を含まない言葉を {SPEECH_SECONDS} 秒以内に話してください。
           </p>
         ) : null}
-        {speechLive ? <p className="mt-2 rounded-lg bg-slate-100 p-3 text-slate-900">聞き取り: {speechLive}</p> : null}
+        {speechLive ? <p className="mt-2 rounded-xl bg-surface p-3 text-ink">聞き取り: {speechLive}</p> : null}
         {audioUrl ? (
           <div className="mt-3">
-            <p className="mb-1 font-bold text-slate-900">録音の再生（{RECORD_SECONDS} 秒）</p>
+            <p className="mb-1 font-bold text-ink">録音の再生（{RECORD_SECONDS} 秒）</p>
             <audio controls src={audioUrl} className="w-full" />
           </div>
         ) : null}
         {Object.keys(tests).length > 0 ? (
-          <ul className="mt-4 space-y-1 text-slate-900">
+          <ul className="mt-4 space-y-1 text-ink">
             {Object.entries(tests).map(([k, v]) => (
               <li key={k}>
                 <span className="font-bold">{k}:</span> {v}
@@ -233,19 +233,19 @@ export function DeviceDiag() {
           <Button variant="primary" onClick={copyAll} disabled={diag === null}>
             結果をコピー
           </Button>
-          {copyNote ? <span className="text-slate-800">{copyNote}</span> : null}
+          {copyNote ? <span className="text-ink">{copyNote}</span> : null}
         </div>
         <textarea
           readOnly
           aria-label="診断結果の文章"
           value={summary}
           rows={10}
-          className="mt-3 block w-full rounded-lg border-2 border-slate-400 bg-slate-50 p-3 text-base text-slate-900"
+          className="mt-3 block w-full rounded-md border-2 border-ink-muted bg-raised p-3 text-base text-ink"
         />
       </Section>
 
       <p>
-        <Link href="/" className="font-bold text-blue-900 underline">
+        <Link href="/" className="font-bold text-ai underline">
           報告書の画面へ戻る
         </Link>
       </p>

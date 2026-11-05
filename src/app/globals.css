@@ -1,16 +1,28 @@
 @import "tailwindcss";
 
-/* 白背景固定（ダークモードは使わない）。現場で読めるよう本文は 18px 以上 */
+/* ジローブルー（薬局のデザインシステム）。ライト固定（ダークモードは使わない）。現場で読めるよう本文は 18px 以上 */
 :root {
   color-scheme: light;
-  --background: #ffffff;
-  --foreground: #0f172a;
+}
+
+@theme {
+  --color-surface: #f4f7fa; /* ページ背景 */
+  --color-raised: #ffffff; /* カード・入力欄 */
+  --color-line: #d3dce7; /* 区切り線・カード枠 */
+  --color-ink: #16233d; /* 本文 */
+  --color-ink-muted: #4a5a74; /* 補足・入力欄とボタンの枠線 */
+  --color-ai: #165e83; /* 主色（primary ボタン・リンク・強調） */
+  --color-ai-hover: #124f6e; /* primary のホバー（独自に決めた値） */
+  --color-on-ai: #ffffff;
+  --color-hanada: #2792c3; /* フォーカスリング・図形（文字には使わない） */
+  --color-shiroai: #c1e4e9; /* お知らせの色面・選択中の行・マスク記号の背景 */
+  --color-akane: #b7282e; /* 注意・警告・要確認・danger */
+  --color-on-akane: #ffffff;
 }
 
 @theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: system-ui, -apple-system, "Hiragino Sans", "Yu Gothic UI", "Meiryo", "Noto Sans JP", sans-serif;
+  --font-sans: var(--font-biz-udp), "BIZ UDPGothic", "Hiragino Sans", "Yu Gothic", Meiryo, sans-serif;
+  --font-display: var(--font-zen-maru), "Zen Maru Gothic", "Hiragino Maru Gothic ProN", "BIZ UDPGothic", sans-serif;
 }
 
 html {
@@ -18,8 +30,8 @@ html {
 }
 
 body {
-  background: var(--background);
-  color: var(--foreground);
+  background: var(--color-surface);
+  color: var(--color-ink);
   font-family: var(--font-sans);
   font-size: 1rem;
   line-height: 1.7;

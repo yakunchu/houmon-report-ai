@@ -41,6 +41,7 @@ export function clearEverything(): void {
   try {
     window.localStorage.removeItem(PATIENT_STORE_KEY);
     window.localStorage.removeItem(PREFIX + "pharmacy");
+    window.localStorage.removeItem(PREFIX + "pharmacyContact");
   } catch {
     // 無視
   }
@@ -58,9 +59,11 @@ function parseJson(raw: string | null): unknown {
 /** 保存済みの基本情報。欠けた項目は空文字で補う（型が違う項目は捨てる） */
 export function loadBasic(): BasicInfo {
   const data = parseJson(loadRaw("basic"));
-  if (typeof data !== "object" || data === null) return EMPTY_BASIC;
+  if (typeof data !== "object" || data === null) return { ...EMPTY_BASIC, pharmacyContact: "" };
   const src = data as Record<string, unknown>;
   const out: Record<string, unknown> = { ...EMPTY_BASIC };
+  // 後から足した項目: 古い保存データには無いので、無ければ空文字にする
+  out.pharmacyContact = typeof src.pharmacyContact === "string" ? src.pharmacyContact : "";
   for (const key of Object.keys(EMPTY_BASIC)) {
     const v = src[key];
     if (typeof v === typeof (EMPTY_BASIC as Record<string, unknown>)[key]) out[key] = v;
@@ -78,6 +81,11 @@ export function loadBasic(): BasicInfo {
 /** 薬局名・薬剤師名。患者ではなく端末の設定なので、患者を切り替えても保たれる。保存が無ければ null */
 export function loadPharmacy(): string | null {
   return loadRaw("pharmacy");
+}
+
+/** 薬局の連絡先（TEL・FAX など）。薬局名と同じく端末の設定。保存が無ければ null */
+export function loadPharmacyContact(): string | null {
+  return loadRaw("pharmacyContact");
 }
 
 /**

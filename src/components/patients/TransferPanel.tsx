@@ -2,10 +2,13 @@
 
 /**
  * 患者リストの書き出し・読み込み（iPhone と PC で同じリストを使うため）。
- * - ファイルには実名・生年月日・住所が入る。サーバーには送らず、端末どうし（AirDrop・USB など）で直接渡す。
+ * - ファイルには実名・生年月日・住所が入る。ファイルの書き出し・読み込みはサーバーを介さず、端末どうし（AirDrop・USB など）で直接渡す。
+ * - 受け渡しコードだけは例外で、患者リスト（実名・生年月日・住所を含む）を暗号化してサーバーのメモリに 10 分だけ預ける。
+ *   復号に使うコードもサーバーに送るので、サーバーを動かしているパソコンでは中身を読める。AI には送らない。
+ *   サーバーの設定（HOUMON_SYNC=on）を明示したときだけ使える（既定はオフ）。画面の文言はこの事実どおりに書くこと。
  * - 読み込みは、適用する前に内訳（追加・更新・グループ追加）を見せて確認する。
  */
-import { useMemo, useRef, useState, useSyncExternalStore, type ChangeEvent } from "react";
+import { useEffect, useMemo, useRef, useState, useSyncExternalStore, type ChangeEvent, type FormEvent } from "react";
 import {
   exportFileName,
   exportStore,
@@ -17,7 +20,10 @@ import {
   type PatientId,
   type PatientStore,
 } from "@/lib/patients";
-import { Button, ChoiceButtons, inputClass } from "../ui";
+import { exportForRelay } from "@/lib/patients/transfer";
+import { describeRelayServer, receiveFromRelay, sendToRelay, type ServerPlace } from "@/lib/sync/client";
+import { generateCode, isRelayCode } from "@/lib/sync/crypto";
+import { Button, ChoiceButtons, WarnText, inputClass } from "../ui";
 
 type Props = {
   store: PatientStore;
@@ -39,6 +45,32 @@ const MODE_OPTIONS = [MODE_LABEL.merge, MODE_LABEL.replace] as const;
 
 const EXPORT_CONFIRM =
   "ファイルには患者さんの実名・生年月日・住所が入ります。自分の端末どうし（AirDrop・USB など）で直接移し、移し終えたらファイルを削除してください。メールやチャットでは送らないでください。書き出しますか？";
+
+/** 預け先の言い方（画面を開いているホストから）。どのサーバーかが分かるようにする */
+function placeText(place: ServerPlace): string {
+  if (place.host === "") return "このアプリのサーバー";
+  return place.kind === "lan"
+    ? `このアプリを動かしているパソコン（${place.host}）`
+    : `インターネット上のサーバー（${place.host}）`;
+}
+
+function relayConfirm(count: number, place: ServerPlace): string {
+  return (
+    `患者さんの実名・生年月日・住所を含む患者リスト（${count}人）を、この端末で暗号化して、${placeText(place)}に 10 分だけ預けます（受け取られると消えます）。` +
+    "復号に使うコードもサーバーに送るため、そのサーバーを動かしているパソコンでは中身を読めます。AI には送りません。" +
+    (place.kind === "public" && place.host !== "" ? "\n\n⚠ ここはインターネット上のサーバーに見えます。患者リストは預けないでください。" : "") +
+    "\n\n同じ Wi-Fi の自分の端末で、表示されるコードを入力して受け取ってください。送りますか？"
+  );
+}
+
+/** 全角数字などを半角にして、数字だけ 6 桁まで残す */
+function normalizeCodeInput(s: string): string {
+  return s.normalize("NFKC").replace(/\D/g, "").slice(0, 6);
+}
+
+function formatRemaining(sec: number): string {
+  return `${Math.floor(sec / 60)}:${String(sec % 60).padStart(2, "0")}`;
+}
 
 type Loaded = { ok: true; file: ExportFile; warnings: string[] } | { ok: false; message: string };
 
@@ -68,6 +100,9 @@ function isAbort(e: unknown): boolean {
 
 export function TransferPanel({ store, onImport, onClose, selectedId }: Props) {
   const canShare = useSyncExternalStore(subscribeNone, detectShare, () => false);
+  // この画面を開いているホスト = 受け渡しコードの預け先（/api/sync は同じホストのサーバー）
+  const host = useSyncExternalStore(subscribeNone, () => window.location.host, () => "");
+  const place = describeRelayServer(host);
 
   const [exportMsg, setExportMsg] = useState<string | null>(null);
   const [shareHint, setShareHint] = useState(false);
@@ -79,8 +114,44 @@ export function TransferPanel({ store, onImport, onClose, selectedId }: Props) {
   const [done, setDone] = useState<string | null>(null);
   const readSeq = useRef(0);
 
+  // 受け渡しコード
+  const [scope, setScope] = useState<"all" | "selected">("all");
+  const [sending, setSending] = useState(false);
+  const [sent, setSent] = useState<{ code: string; expiresLocal: number } | null>(null);
+  const [now, setNow] = useState(0);
+  const [sendError, setSendError] = useState<string | null>(null);
+  const [recvCode, setRecvCode] = useState("");
+  const [receiving, setReceiving] = useState(false);
+  const [recvError, setRecvError] = useState<string | null>(null);
+  const [recvOk, setRecvOk] = useState(false);
+  const [viaCode, setViaCode] = useState(false);
+  const resultRef = useRef<HTMLDivElement>(null);
+  const scrollOnLoad = useRef(false);
+
   const patientCount = store.patients.length;
   const groupCount = store.groups.length;
+  const selectedPatient = selectedId !== null ? store.patients.find((p) => p.id === selectedId) : undefined;
+  const effectiveScope = scope === "selected" && selectedPatient ? "selected" : "all";
+  const SCOPE_ALL = `患者リスト全体（${patientCount}人）`;
+  const SCOPE_ONE = selectedPatient
+    ? `いま選んでいる患者だけ（${selectedPatient.familyName} ${selectedPatient.givenName}）`
+    : "";
+  const sendCount = effectiveScope === "selected" ? 1 : patientCount;
+  const remainingSec = sent ? Math.max(0, Math.ceil((sent.expiresLocal - now) / 1000)) : 0;
+
+  // 残り時間を 1 秒ごとに更新する
+  useEffect(() => {
+    if (!sent) return;
+    const id = window.setInterval(() => setNow(Date.now()), 1000);
+    return () => window.clearInterval(id);
+  }, [sent]);
+
+  // コードで受け取った内容は、下の確認画面までスクロールして見せる
+  useEffect(() => {
+    if (!loaded || !scrollOnLoad.current) return;
+    scrollOnLoad.current = false;
+    resultRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+  }, [loaded]);
 
   /* ---------------- 書き出し ---------------- */
 
@@ -129,13 +200,79 @@ export function TransferPanel({ store, onImport, onClose, selectedId }: Props) {
 
   /* ---------------- 読み込み ---------------- */
 
-  function inspect(text: string, name: string): void {
+  function inspect(text: string, name: string, byCode = false): Loaded {
     setDone(null);
     setSourceName(name);
+    setViaCode(byCode);
+    let result: Loaded;
     try {
-      setLoaded(parseExport(text));
+      result = parseExport(text);
     } catch {
-      setLoaded({ ok: false, message: "ファイルを読み取れませんでした。" });
+      result = { ok: false, message: "ファイルを読み取れませんでした。" };
+    }
+    setLoaded(result);
+    return result;
+  }
+
+  /* ---------------- 受け渡しコード ---------------- */
+
+  async function doSend(): Promise<void> {
+    if (sending || !window.confirm(relayConfirm(sendCount, place))) return;
+    setSendError(null);
+    setSent(null);
+    setDone(null);
+    const exportedAt = new Date().toISOString();
+    const json =
+      effectiveScope === "selected" && selectedPatient
+        ? exportForRelay(store, exportedAt, selectedPatient.id)
+        : exportForRelay(store, exportedAt);
+    if (json === null) {
+      setSendError("送る患者が見つかりません。選び直してください。");
+      return;
+    }
+    setSending(true);
+    try {
+      let message = "送れませんでした。もう一度お試しください。";
+      for (let attempt = 0; attempt < 3; attempt++) {
+        const code = generateCode();
+        const r = await sendToRelay(json, code);
+        if (r.ok) {
+          const t = Date.now();
+          setNow(t);
+          setSent({ code, expiresLocal: t + r.ttlSeconds * 1000 });
+          return;
+        }
+        message = r.message;
+        if (r.kind !== "exists") break; // 同じコードがあるときだけ、別のコードで送り直す
+      }
+      setSendError(message);
+    } finally {
+      setSending(false);
+    }
+  }
+
+  async function doReceive(e?: FormEvent): Promise<void> {
+    e?.preventDefault();
+    if (receiving || !isRelayCode(recvCode)) return;
+    const seq = ++readSeq.current;
+    setReceiving(true);
+    setRecvError(null);
+    setRecvOk(false);
+    setDone(null);
+    try {
+      const r = await receiveFromRelay(recvCode);
+      if (seq !== readSeq.current) return;
+      if (!r.ok) {
+        setRecvError(r.message);
+        return;
+      }
+      setRecvCode("");
+      scrollOnLoad.current = true;
+      const res = inspect(r.json, "受け渡しコード", true);
+      if (res.ok) setRecvOk(true);
+      else setRecvError(`受け取った内容は患者リストではありませんでした（${res.message}）。送る側でもう一度「送る」を押してください。`);
+    } finally {
+      setReceiving(false);
     }
   }
 
@@ -213,12 +350,13 @@ export function TransferPanel({ store, onImport, onClose, selectedId }: Props) {
     onImport(preview.store);
     setDone(
       mode === "replace"
-        ? `読み込みました。患者リストを${preview.store.patients.length}人（グループ${preview.store.groups.length}）に置き換えました。移し終えたら、元のファイルを削除してください。`
-        : `読み込みました（追加 ${s.added}人・更新 ${s.updated}人・グループ追加 ${s.groupsAdded}）。移し終えたら、元のファイルを削除してください。`,
+        ? `読み込みました。患者リストを${preview.store.patients.length}人（グループ${preview.store.groups.length}）に置き換えました。${viaCode ? "" : "移し終えたら、元のファイルを削除してください。"}`
+        : `読み込みました（追加 ${s.added}人・更新 ${s.updated}人・グループ追加 ${s.groupsAdded}）。${viaCode ? "" : "移し終えたら、元のファイルを削除してください。"}`,
     );
     setLoaded(null);
     setSourceName("");
     setPasteText("");
+    setRecvOk(false);
   }
 
   function changeMode(label: string): void {
@@ -227,22 +365,137 @@ export function TransferPanel({ store, onImport, onClose, selectedId }: Props) {
   }
 
   return (
-    <div className="mt-4 rounded-xl border-2 border-slate-400 bg-slate-50 p-3 sm:p-4" aria-label="患者リストの書き出し・読み込み">
+    <div className="mt-4 rounded-xl border-2 border-line bg-surface p-3 sm:p-4" aria-label="患者リストの書き出し・読み込み">
       <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
         <h3 className="text-xl font-bold">患者リストの書き出し・読み込み</h3>
         <Button onClick={onClose}>閉じる</Button>
       </div>
 
-      <p className="rounded-lg border-2 border-amber-700 bg-amber-50 px-3 py-2 font-bold text-amber-950">
-        <span aria-hidden="true">⚠ </span>
+      <p className="rounded-xl border-2 border-akane bg-raised px-3 py-2 font-bold text-ink">
+        <span aria-hidden="true" className="text-akane">⚠ </span>
         ファイルには患者さんの実名・生年月日・住所が入ります。自分の端末どうし（AirDrop・USB など）で直接移し、移し終えたらファイルを削除してください。メールやチャットで送らないでください。
+        受け渡しコードを使うときも、実名・生年月日・住所を含む患者リストが、サーバーを動かしているパソコンに 10 分だけ残ります。
       </p>
-      <p className="mt-2 text-slate-800">サーバーや AI には送りません。ファイルは暗号化されません。</p>
+      <p className="mt-2 text-ink">
+        ファイルの書き出し・読み込みは、サーバーにも AI にも送りません（ファイルは暗号化されません）。受け渡しコードだけは、患者リストを暗号化してサーバーに
+        10 分だけ預けます。復号に使うコードもサーバーに送るので、サーバーを動かしているパソコンでは中身を読めます（AI には送りません）。
+      </p>
+
+      {/* 受け渡しコード */}
+      <section className="mt-4 rounded-xl border-2 border-ai bg-raised p-3" aria-labelledby="transfer-relay-h">
+        <h4 id="transfer-relay-h" className="mb-2 text-lg font-bold">
+          1. 受け渡しコードで渡す（同じ Wi-Fi の薬局のパソコンのとき）
+        </h4>
+        <p className="text-ink">
+          同じ Wi-Fi の薬局のパソコンと受け渡します。内容は端末の中で暗号化して、サーバーに 10 分だけ預けて消します。AI には送りません。
+          サーバーの設定で受け渡しコードがオフのときは使えません（その場合は下の「ファイルに書き出す」で渡してください）。
+        </p>
+
+        <div className="mt-3 rounded-xl border-2 border-line p-3">
+          <p className="mb-2 text-lg font-bold">送る側</p>
+          <p className="mb-1 font-bold">送る内容</p>
+          <ChoiceButtons
+            name="relay-scope"
+            label="送る内容"
+            options={selectedPatient ? [SCOPE_ALL, SCOPE_ONE] : [SCOPE_ALL]}
+            value={effectiveScope === "selected" ? SCOPE_ONE : SCOPE_ALL}
+            onChange={(label) => {
+              setScope(label === SCOPE_ONE ? "selected" : "all");
+              setSent(null);
+              setSendError(null);
+            }}
+          />
+          {!selectedPatient ? (
+            <p className="mt-2 text-ink">1 人だけ送るときは、先に患者リストでその人を選んでください。</p>
+          ) : null}
+          {effectiveScope === "selected" ? (
+            <p className="mt-2 text-ink">
+              1 人だけ送ったときは、受け取る側で「追加・更新」を選んでください（「置き換え」にすると、ほかの患者が消えます）。
+            </p>
+          ) : null}
+          <div className="mt-3 rounded-xl border-2 border-akane bg-raised px-3 py-2 text-ink">
+            <p className="font-bold">
+              <span aria-hidden="true" className="text-akane">⚠ </span>
+              何が送られるか
+            </p>
+            <p className="mt-1">
+              実名・生年月日・住所を含む患者リスト（{sendCount} 人）を、暗号化して<strong>{placeText(place)}</strong>に 10 分だけ預けます。
+              復号に使うコードもサーバーに送るため、そのサーバーを動かしているパソコンでは中身を読めます。AI には送りません。
+            </p>
+          </div>
+          {place.kind === "public" && place.host !== "" ? (
+            <WarnText>
+              ここはインターネット上のサーバーに見えます。患者リストは預けないでください。受け渡しコードは、薬局のパソコンが動かす同じ Wi-Fi 内のサーバーだけで使います。
+            </WarnText>
+          ) : null}
+          <div className="mt-3">
+            <Button variant="primary" onClick={() => void doSend()} disabled={sending || patientCount === 0}>
+              {sending ? "暗号化して預けています…" : "送る（暗号化して預ける）"}
+            </Button>
+          </div>
+          {patientCount === 0 ? <p className="mt-2 text-ink">送れる患者がまだいません。</p> : null}
+          {sendError ? <WarnText>{sendError}</WarnText> : null}
+
+          {sent && remainingSec > 0 ? (
+            <div role="status" className="mt-3 rounded-xl border-2 border-ai bg-shiroai px-3 py-3 text-ink">
+              <p className="font-bold">
+                <span aria-hidden="true" className="text-ai">✓ </span>
+                預けました。受け取る端末でこのコードを入力してください。
+              </p>
+              <p
+                className="my-2 break-all text-center font-mono text-5xl font-bold tracking-widest text-ink"
+                aria-label={`コード ${sent.code.split("").join(" ")}`}
+              >
+                {sent.code.slice(0, 3)} {sent.code.slice(3)}
+              </p>
+              <p role="timer" className="text-center text-xl font-bold">
+                残り {formatRemaining(remainingSec)}（10 分で消えます。受け取られても消えます）
+              </p>
+            </div>
+          ) : null}
+          {sent && remainingSec === 0 ? (
+            <WarnText>期限が切れました。コードは使えません。もう一度「送る」を押してください。</WarnText>
+          ) : null}
+        </div>
+
+        <form className="mt-3 rounded-xl border-2 border-line p-3" onSubmit={(e) => void doReceive(e)}>
+          <p className="mb-2 text-lg font-bold">受け取る側</p>
+          <label className="block">
+            <span className="mb-1 block font-bold">コード（数字 6 桁）</span>
+            <input
+              type="text"
+              inputMode="numeric"
+              pattern="[0-9]{6}"
+              maxLength={12}
+              autoComplete="off"
+              className={`${inputClass} max-w-[14rem] font-mono text-3xl tracking-widest`}
+              value={recvCode}
+              onChange={(e) => {
+                setRecvCode(normalizeCodeInput(e.target.value));
+                setRecvError(null);
+              }}
+              placeholder="000000"
+            />
+          </label>
+          <div className="mt-3">
+            <Button type="submit" variant="primary" disabled={receiving || !isRelayCode(recvCode)}>
+              {receiving ? "受け取っています…" : "受け取る（取得して復号）"}
+            </Button>
+          </div>
+          {recvError ? <WarnText>{recvError}</WarnText> : null}
+          {recvOk ? (
+            <p role="status" className="mt-2 font-bold text-ink">
+              <span aria-hidden="true" className="text-ai">✓ </span>
+              受け取って復号しました。まだこの端末のリストは変わっていません。下の「3. 読み込む」の「読み込む前の確認」で内容を見てから読み込んでください。
+            </p>
+          ) : null}
+        </form>
+      </section>
 
       {/* 書き出し */}
-      <section className="mt-4 rounded-xl border-2 border-slate-300 bg-white p-3" aria-labelledby="transfer-export-h">
+      <section className="mt-4 rounded-xl border-2 border-line bg-raised p-3" aria-labelledby="transfer-export-h">
         <h4 id="transfer-export-h" className="mb-2 text-lg font-bold">
-          1. この端末のリストを書き出す
+          2. ファイルに書き出す（この端末のリスト）
         </h4>
         <div className="flex flex-wrap items-center gap-2">
           <Button variant="primary" onClick={doExport} disabled={patientCount === 0}>
@@ -254,40 +507,40 @@ export function TransferPanel({ store, onImport, onClose, selectedId }: Props) {
             </Button>
           ) : null}
         </div>
-        {patientCount === 0 ? <p className="mt-2 text-slate-800">書き出せる患者がまだいません。</p> : null}
-        <p className="mt-2 text-slate-800">
+        {patientCount === 0 ? <p className="mt-2 text-ink">書き出せる患者がまだいません。</p> : null}
+        <p className="mt-2 text-ink">
           iPhone では「ファイル」アプリ（このiPhone内のダウンロード）に保存されます。そこから AirDrop などで相手の端末へ渡してください。
         </p>
         {shareHint ? (
-          <p role="status" className="mt-2 font-bold text-amber-950">
-            <span aria-hidden="true">⚠ </span>
+          <p role="status" className="mt-2 font-bold text-akane">
+            <span aria-hidden="true" className="text-akane">⚠ </span>
             共有できませんでした。「ファイルに書き出す」を使ってください。
           </p>
         ) : null}
         {exportMsg ? (
-          <p role="status" className="mt-2 break-words font-bold text-slate-900">
-            <span aria-hidden="true">✓ </span>
+          <p role="status" className="mt-2 break-words font-bold text-ink">
+            <span aria-hidden="true" className="text-ai">✓ </span>
             {exportMsg}
           </p>
         ) : null}
       </section>
 
       {/* 読み込み */}
-      <section className="mt-4 rounded-xl border-2 border-slate-300 bg-white p-3" aria-labelledby="transfer-import-h">
+      <section className="mt-4 rounded-xl border-2 border-line bg-raised p-3" aria-labelledby="transfer-import-h">
         <h4 id="transfer-import-h" className="mb-2 text-lg font-bold">
-          2. 別の端末のリストを読み込む
+          3. 読み込む（受け取った内容・ファイル）
         </h4>
 
         <p className="mb-1 font-bold">読み込み方</p>
         <ChoiceButtons name="transfer-mode" label="読み込み方" options={MODE_OPTIONS} value={MODE_LABEL[mode]} onChange={changeMode} />
-        <p className="mt-2 text-slate-800">
+        <p className="mt-2 text-ink">
           {mode === "merge"
             ? "氏名と生年月日が同じ人は同じ患者として、更新日時が新しい方を使います（生年月日が未入力どうしの同姓同名も同じ人として扱います）。ほかの人は追加します。この端末にだけいる人は消えません。"
             : "この端末のリストを、ファイルの内容に丸ごと置き換えます。この端末にだけいる人は消えます。"}
         </p>
 
         <div className="mt-3 flex flex-wrap items-center gap-2">
-          <label className="inline-flex min-h-12 cursor-pointer items-center justify-center gap-2 rounded-lg border-2 border-blue-800 bg-blue-800 px-5 py-2 text-lg font-bold text-white hover:bg-blue-900 has-[:focus-visible]:outline-4 has-[:focus-visible]:outline-offset-2 has-[:focus-visible]:outline-blue-700">
+          <label className="inline-flex min-h-12 cursor-pointer items-center justify-center gap-2 rounded-xl border-2 border-ai bg-ai px-5 py-2 text-lg font-bold text-on-ai hover:bg-ai-hover has-[:focus-visible]:outline-4 has-[:focus-visible]:outline-offset-2 has-[:focus-visible]:outline-hanada">
             ファイルを選ぶ
             <input
               type="file"
@@ -296,7 +549,7 @@ export function TransferPanel({ store, onImport, onClose, selectedId }: Props) {
               onChange={(e) => void onFile(e)}
             />
           </label>
-          <span className="text-slate-800">JSON ファイル（10MB まで）</span>
+          <span className="text-ink">JSON ファイル（10MB まで）</span>
         </div>
 
         <details className="mt-3">
@@ -304,7 +557,7 @@ export function TransferPanel({ store, onImport, onClose, selectedId }: Props) {
             ファイルの中身を貼り付ける
           </summary>
           <label className="mt-2 block">
-            <span className="mb-1 block text-slate-800">ファイルを開いて、中身をそのまま貼り付けてください。</span>
+            <span className="mb-1 block text-ink">ファイルを開いて、中身をそのまま貼り付けてください。</span>
             <textarea
               className={`${inputClass} min-h-32 font-mono text-base`}
               value={pasteText}
@@ -319,10 +572,11 @@ export function TransferPanel({ store, onImport, onClose, selectedId }: Props) {
           </Button>
         </details>
 
+        <div ref={resultRef} className="scroll-mt-24">
         {loaded && !loaded.ok ? (
-          <div role="alert" className="mt-3 rounded-lg border-2 border-red-800 bg-red-50 px-3 py-2 text-red-950">
-            <p className="font-bold">
-              <span aria-hidden="true">✕ </span>
+          <div role="alert" className="mt-3 rounded-xl border-2 border-akane bg-raised px-3 py-2 text-ink">
+            <p className="font-bold text-akane">
+              <span aria-hidden="true" className="text-akane">✕ </span>
               読み込めません
             </p>
             <p className="mt-1 break-words">{loaded.message}</p>
@@ -330,9 +584,9 @@ export function TransferPanel({ store, onImport, onClose, selectedId }: Props) {
         ) : null}
 
         {loaded && loaded.ok && preview && !preview.ok ? (
-          <div role="alert" className="mt-3 rounded-lg border-2 border-red-800 bg-red-50 px-3 py-2 text-red-950">
-            <p className="font-bold">
-              <span aria-hidden="true">✕ </span>
+          <div role="alert" className="mt-3 rounded-xl border-2 border-akane bg-raised px-3 py-2 text-ink">
+            <p className="font-bold text-akane">
+              <span aria-hidden="true" className="text-akane">✕ </span>
               読み込めません
             </p>
             <p className="mt-1">内容を取り込む準備に失敗しました。ファイルが壊れている可能性があります。</p>
@@ -340,7 +594,7 @@ export function TransferPanel({ store, onImport, onClose, selectedId }: Props) {
         ) : null}
 
         {loaded && loaded.ok && preview && preview.ok ? (
-          <div role="status" className="mt-3 rounded-lg border-2 border-blue-800 bg-blue-50 px-3 py-3 text-slate-900">
+          <div role="status" className="mt-3 rounded-xl border-2 border-ai bg-shiroai px-3 py-3 text-ink">
             <p className="font-bold">読み込む前の確認</p>
             {sourceName ? <p className="mt-1 break-all text-base">元: {sourceName}</p> : null}
             <p className="mt-1 text-base">書き出した日時: {formatExportedAt(loaded.file.exportedAt)}</p>
@@ -360,21 +614,21 @@ export function TransferPanel({ store, onImport, onClose, selectedId }: Props) {
             )}
             {nothingToDo ? <p className="mt-1">この端末にすでに入っている内容と同じです。読み込む必要はありません。</p> : null}
             {emptyReplace ? (
-              <p className="mt-1 font-bold text-red-950">
-                <span aria-hidden="true">✕ </span>
+              <p className="mt-1 font-bold text-akane">
+                <span aria-hidden="true" className="text-akane">✕ </span>
                 患者が 0 人のファイルでは置き換えできません（端末のリストが消えるだけになります）。すべて消したいときは「患者リストも含めて、この端末の保存をすべて消す」を使ってください。
               </p>
             ) : null}
             {selectedWillLeave ? (
-              <p className="mt-2 font-bold text-amber-950">
-                <span aria-hidden="true">⚠ </span>
+              <p className="mt-2 font-bold text-akane">
+                <span aria-hidden="true" className="text-akane">⚠ </span>
                 いま選んでいる患者は読み込み後のリストにいません。作業中の入力は消えませんが、「患者リストにまだ登録されていません」の扱いになります。
               </p>
             ) : null}
             {warnings.length > 0 ? (
-              <div className="mt-2 font-bold text-amber-950">
+              <div className="mt-2 font-bold text-akane">
                 <p>
-                  <span aria-hidden="true">⚠ </span>注意
+                  <span aria-hidden="true" className="text-akane">⚠ </span>注意
                 </p>
                 <ul className="list-disc pl-6">
                   {warnings.map((w) => (
@@ -401,9 +655,11 @@ export function TransferPanel({ store, onImport, onClose, selectedId }: Props) {
           </div>
         ) : null}
 
+        </div>
+
         {done ? (
-          <p role="status" className="mt-3 rounded-lg border-2 border-green-800 bg-green-50 px-3 py-2 font-bold text-green-950">
-            <span aria-hidden="true">✓ </span>
+          <p role="status" className="mt-3 rounded-xl border-2 border-ai bg-shiroai px-3 py-2 font-bold text-ink">
+            <span aria-hidden="true" className="text-ai">✓ </span>
             {done}
           </p>
         ) : null}

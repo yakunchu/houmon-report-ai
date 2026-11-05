@@ -27,7 +27,7 @@ type Props = {
 
 function FieldCard({ label, badge, children }: { label: string; badge?: boolean; children: ReactNode }) {
   return (
-    <div className="rounded-xl border-2 border-slate-300 bg-white p-3 sm:p-4">
+    <div className="rounded-xl border-2 border-line bg-raised p-3 sm:p-4">
       <div className="mb-2 flex flex-wrap items-center gap-2">
         <h4 className="text-xl font-bold">{label}</h4>
         {badge ? <UnsureBadge /> : null}
@@ -40,7 +40,7 @@ function FieldCard({ label, badge, children }: { label: string; badge?: boolean;
 function NoteInput({ label, value, onChange }: { label: string; value: string; onChange: (v: string) => void }) {
   return (
     <label className="mt-3 block">
-      <span className="mb-1 block font-bold text-slate-800">備考</span>
+      <span className="mb-1 block font-bold text-ink">備考</span>
       <input
         aria-label={`${label}の備考`}
         className={inputClass}
@@ -65,7 +65,7 @@ function ChoiceCard({ def, draft, onChange }: { def: ChoiceFieldDef; draft: Repo
       />
       {def.key === "daytimeSleep" && draft.daytimeSleep.choice === "有" ? (
         <label className="mt-3 block">
-          <span className="mb-1 block font-bold text-slate-800">昼寝の長さ（○時間○分）</span>
+          <span className="mb-1 block font-bold text-ink">昼寝の長さ（○時間○分）</span>
           <input
             aria-label="睡眠・日中の昼寝の長さ"
             className={inputClass}
@@ -118,14 +118,14 @@ function LeftoverCard({ draft, onChange }: { draft: ReportDraft; onChange: (d: R
       {rows.length === 0 ? <p className="mb-2">会話に残薬の話はありませんでした。</p> : null}
       <div className="space-y-3">
         {rows.map((r, i) => (
-          <div key={i} className="rounded-lg border-2 border-slate-300 bg-slate-50 p-3">
+          <div key={i} className="rounded-xl border-2 border-line bg-surface p-3">
             <div className="mb-2 flex flex-wrap items-center gap-2">
               <span className="font-bold">{i + 1}件目</span>
               {isUnsure(r.amount) ? <UnsureBadge text="要確認（残数）" /> : null}
             </div>
             <div className="grid gap-2 sm:grid-cols-3">
               <label className="block">
-                <span className="mb-1 block font-bold text-slate-800">薬剤名</span>
+                <span className="mb-1 block font-bold text-ink">薬剤名</span>
                 <input
                   className={inputClass}
                   value={r.drugName}
@@ -133,7 +133,7 @@ function LeftoverCard({ draft, onChange }: { draft: ReportDraft; onChange: (d: R
                 />
               </label>
               <label className="block">
-                <span className="mb-1 block font-bold text-slate-800">残数</span>
+                <span className="mb-1 block font-bold text-ink">残数</span>
                 <input
                   className={inputClass}
                   value={r.amount}
@@ -142,7 +142,7 @@ function LeftoverCard({ draft, onChange }: { draft: ReportDraft; onChange: (d: R
                 />
               </label>
               <label className="block">
-                <span className="mb-1 block font-bold text-slate-800">備考</span>
+                <span className="mb-1 block font-bold text-ink">備考</span>
                 <input
                   className={inputClass}
                   value={r.note}
@@ -205,7 +205,7 @@ function SoapCard({ draft, onChange, transcript }: { draft: ReportDraft; onChang
 function EvidencePanel({ evidenceKey, draft, transcript }: { evidenceKey: EvidenceKey; draft: ReportDraft; transcript: string }) {
   const quotes = splitQuotes(draft.evidence[evidenceKey]);
   return (
-    <div className="mt-3 rounded-lg border-2 border-slate-400 bg-slate-50 p-3">
+    <div className="mt-3 rounded-xl border-2 border-line bg-surface p-3">
       <p className="mb-2 font-bold">根拠: {EVIDENCE_LABELS[evidenceKey]}</p>
       {quotes.length === 0 ? (
         <p>根拠になる発話はありません（会話に話が出ていません）。</p>
@@ -215,8 +215,15 @@ function EvidencePanel({ evidenceKey, draft, transcript }: { evidenceKey: Eviden
             const ok = checkQuoteInText(q, transcript);
             return (
               <li key={i} className="flex flex-wrap items-start gap-2">
-                <span className={ok ? "font-bold text-green-900" : "font-bold text-amber-950"}>
-                  {ok ? "✓ 原文にあり" : "⚠ 原文にない引用"}
+                <span
+                  className={
+                    ok
+                      ? "rounded-md bg-shiroai px-2 font-bold text-ink"
+                      : "rounded-md border-2 border-akane bg-raised px-2 font-bold text-ink"
+                  }
+                >
+                  {ok ? <span className="text-ai">✓</span> : <span className="text-akane">⚠</span>}{" "}
+                  {ok ? "原文にあり" : "原文にない引用"}
                 </span>
                 <span>「{q}」</span>
               </li>
@@ -238,7 +245,7 @@ export function DraftSection({ draft, onChange, transcript, onProceed, stale }: 
           この下書きは、今の会話・宛先・基本情報から作ったものではありません（変更前の内容のままです）。②で「マスクして確認」→「下書きを作り直す」を押してください。それまで出力へは進めません。
         </WarnText>
       ) : null}
-      <p className="mb-4 rounded-lg bg-slate-100 px-3 py-2 text-slate-900">
+      <p className="mb-4 rounded-xl bg-shiroai px-3 py-2 text-ink">
         AIが会話から下書きしました。会話に根拠がない欄は「要確認」のままです。内容を確認して、必要なら直してください。最終判断は薬剤師が行います。
       </p>
       <div className="space-y-8">
@@ -247,7 +254,7 @@ export function DraftSection({ draft, onChange, transcript, onProceed, stale }: 
           const opened = openEvidence[g.group] === true;
           return (
             <div key={g.group}>
-              <h3 className="mb-3 border-l-8 border-blue-800 pl-3 text-2xl font-bold">{g.group}</h3>
+              <h3 className="mb-3 font-display text-2xl font-bold text-ai">{g.group}</h3>
               <div className="space-y-3">
                 {g.items.map((item) => {
                   if (item.key === "leftoverMedications") return <LeftoverCard key={item.key} draft={draft} onChange={onChange} />;
@@ -272,7 +279,7 @@ export function DraftSection({ draft, onChange, transcript, onProceed, stale }: 
           );
         })}
       </div>
-      <div className="mt-8 border-t-2 border-slate-300 pt-4">
+      <div className="mt-8 border-t-2 border-line pt-4">
         <Button variant="primary" onClick={onProceed} disabled={stale}>
           確認して出力へ進む
         </Button>

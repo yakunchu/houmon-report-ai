@@ -44,15 +44,15 @@ export function SuggestionPanel({
   return (
     <section
       aria-label="会話から読み取った基本情報"
-      className="rounded-2xl border-2 border-blue-800 bg-blue-50 p-4 sm:p-6"
+      className="rounded-xl border-2 border-ai bg-shiroai p-4 sm:p-6"
     >
-      <h2 className="text-2xl font-bold text-slate-900">会話から読み取った基本情報</h2>
-      <p className="mt-1 text-slate-900">
+      <h2 className="font-display text-2xl font-bold text-ink">会話から読み取った基本情報</h2>
+      <p className="mt-1 text-ink">
         会話から判断できた項目の提案です。空欄は自動で入れました。内容を確認して、よければ患者リストに保存してください。
       </p>
 
       {items.length === 0 ? (
-        <p className="mt-3 rounded-lg bg-white px-3 py-3 text-slate-900">
+        <p className="mt-3 rounded-xl bg-raised px-3 py-3 text-ink">
           この会話からは、基本情報の項目を読み取れませんでした。
         </p>
       ) : (
@@ -61,7 +61,7 @@ export function SuggestionPanel({
             const same = isSameAsCurrent(basic, item);
             const autoFilled = same && item.fields.some((f) => aiFields.includes(f));
             return (
-              <li key={item.key} className="rounded-xl border-2 border-slate-300 bg-white p-3">
+              <li key={item.key} className="rounded-xl border-2 border-line bg-raised p-3">
                 <div className="flex flex-wrap items-center gap-2">
                   <h3 className="text-xl font-bold">{item.label}</h3>
                   {autoFilled ? <AiBadge /> : null}
@@ -71,7 +71,7 @@ export function SuggestionPanel({
                     <p>
                       会話: <span className="font-bold">{item.suggested}</span>
                     </p>
-                    <p className="mt-1 font-bold text-amber-950">
+                    <p className="mt-1 font-bold text-akane">
                       <span aria-hidden="true">⚠ </span>
                       {item.blocked}
                     </p>
@@ -101,14 +101,14 @@ export function SuggestionPanel({
       )}
 
       {missing.length > 0 && items.length > 0 ? (
-        <p className="mt-3 text-slate-900">会話からは読み取れなかった項目: {missing.join("、")}（入力済みの値はそのままです）</p>
+        <p className="mt-3 text-ink">会話からは読み取れなかった項目: {missing.join("、")}（入力済みの値はそのままです）</p>
       ) : null}
 
       <div className="mt-4 flex flex-wrap items-center gap-3">
         <Button variant={needsSave ? "primary" : "secondary"} onClick={onSave} disabled={!canSave}>
           患者リストに保存
         </Button>
-        <span className={`font-bold ${needsSave ? "text-amber-950" : "text-slate-900"}`}>
+        <span className={`font-bold ${needsSave ? "text-akane" : "text-ink"}`}>
           {!saved
             ? "⚠ この患者はまだ登録されていません"
             : dirty

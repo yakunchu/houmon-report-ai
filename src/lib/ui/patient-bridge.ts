@@ -15,6 +15,8 @@ export type VisitFields = {
   reportDate: string;
   nextVisitDate: string;
   pharmacy: string;
+  /** 薬局の連絡先（TEL・FAX など。端末の設定） */
+  pharmacyContact?: string;
 };
 
 /** カナの 2 つの欄を、画面の 1 欄（"ヤマモト ハナコ"）にまとめる */
@@ -54,6 +56,7 @@ export function patientToBasicInfo(patient: Patient, visit: VisitFields): BasicI
     addresseeCareManager: patient.recipients.careManager,
     addresseeDoctor: patient.recipients.doctor,
     pharmacy: visit.pharmacy,
+    pharmacyContact: visit.pharmacyContact ?? "",
     reportDate: visit.reportDate,
     nextVisitDate: visit.nextVisitDate,
     counselingTarget: patient.fixedFields.counselingTarget,

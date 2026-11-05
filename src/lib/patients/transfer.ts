@@ -40,6 +40,33 @@ export const exportStore: ExportStoreFn = (store, exportedAt) => {
   return JSON.stringify(file, null, 2);
 };
 
+/**
+ * 受け渡しコード用の JSON（書き出しファイルと同じ形。サーバーに預ける量を減らすため整形しない）。
+ * patientId を渡すと、その患者 1 人と、その人が入っているグループだけにする（グループの手動並びはその人だけ）。
+ * 見つからないときは null。
+ */
+export function exportForRelay(store: PatientStore, exportedAt: string, patientId?: string): string | null {
+  let patients = store.patients;
+  let groups = store.groups;
+  if (patientId !== undefined) {
+    const p = store.patients.find((x) => x.id === patientId);
+    if (!p) return null;
+    patients = [p];
+    groups = store.groups
+      .filter((g) => p.groupIds.includes(g.id))
+      .map((g) => ({ ...g, manualOrder: g.manualOrder.includes(p.id) ? [p.id] : [] }));
+  }
+  const file: ExportFile = {
+    app: "houmon-report-ai",
+    kind: "patient-list",
+    version: 1,
+    exportedAt,
+    patients,
+    groups,
+  };
+  return JSON.stringify(file);
+}
+
 export const exportFileName: ExportFileNameFn = (exportedAt) => {
   let d = new Date(exportedAt);
   if (Number.isNaN(d.getTime())) d = new Date();

@@ -39,7 +39,7 @@ export function PasteButton({ onPaste, disabled = false }: { onPaste: (text: str
         {busy ? "貼り付け中…" : "クリップボードから貼り付け"}
       </Button>
       {note ? (
-        <span role="status" className="text-lg text-slate-800">
+        <span role="status" className="text-lg text-ink">
           {note}
         </span>
       ) : null}

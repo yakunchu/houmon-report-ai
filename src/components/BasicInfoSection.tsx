@@ -1,20 +1,32 @@
+"use client";
 /**
  * ① 患者（折りたたみ可）。上に患者リスト（top）、下に今回の訪問の作業用コピー（基本情報）の入力欄。
  * 端末内にだけ保存する。
  */
-import type { ReactNode } from "react";
+import { useState, type ReactNode } from "react";
 import type { Group as PatientGroup, GroupId } from "@/lib/patients";
+import type { Patient } from "@/lib/patients/types";
 import { RECIPIENT_TYPES } from "@/lib/report/schema";
 import { MEDICATION_MANAGER, MANAGEMENT_METHOD } from "@/lib/report/schema";
 import { SAMPLES, type SampleId } from "@/lib/sample";
 import { isBasicFilled } from "@/lib/ui/basic-info";
+import { readClipboardText } from "@/lib/ui/clipboard";
+import {
+  REASON_HEADING,
+  appendPrescriptionLine,
+  normalizePrescription,
+  type RemovedLine,
+} from "@/lib/ui/prescription";
 import type { AiField } from "@/lib/ui/suggestions";
 import { DISPENSING_FORMS, SEX_OPTIONS, VISIT_FREQUENCIES, type BasicInfo } from "@/lib/ui/types";
 import { AiBadge, Button, ChoiceButtons, Field, Section, inputClass } from "./ui";
 
+/** 人名・医療機関名・患者情報らしい行を処方内容に戻すときの確認 */
+const RESTORE_CONFIRM = "この行は AI に送られます。人名・医療機関名・患者情報が無いことを確認しましたか？";
+
 function Group({ title, children }: { title: string; children: ReactNode }) {
   return (
-    <fieldset className="mt-6 min-w-0 rounded-xl border-2 border-slate-300 p-4">
+    <fieldset className="mt-6 min-w-0 rounded-xl border-2 border-line p-4">
       <legend className="px-2 text-xl font-bold">{title}</legend>
       <div className="space-y-4">{children}</div>
     </fieldset>
@@ -44,6 +56,7 @@ export function BasicInfoSection({
   groupIds,
   onGroupIdsChange,
   aiFields,
+  savedPrescription = null,
 }: {
   basic: BasicInfo;
   onChange: (next: BasicInfo) => void;
@@ -62,10 +75,107 @@ export function BasicInfoSection({
   onGroupIdsChange: (next: GroupId[]) => void;
   /** 会話から自動入力した項目（バッジを付ける） */
   aiFields: readonly AiField[];
+  /** 患者リストに保存済みの記録の処方（header / items / concomitant）。「前回の処方を使う」に使う。未保存なら null */
+  savedPrescription?: Patient["prescription"] | null;
 }) {
   const set = (patch: Partial<BasicInfo>) => onChange({ ...basic, ...patch });
   const patientName = [basic.patientFamilyName, basic.patientGivenName].filter(Boolean).join(" ");
   const ai = (f: AiField) => aiFields.includes(f);
+
+  // 処方内容の貼り付け。外した行は画面の中だけに持つ（保存しない）。氏名などが混ざりうるため
+  const patientKey = `${basic.patientFamilyName}|${basic.patientGivenName}`;
+  const [removedState, setRemovedState] = useState<{ key: string; items: RemovedLine[] }>({ key: "", items: [] });
+  const [rxNote, setRxNote] = useState("");
+  const [rxBusy, setRxBusy] = useState(false);
+  // 別の患者に切り替えたあとに、前の患者の外した行が残って見えないようにする。
+  // 氏名が両方空のとき（氏名未入力の新規患者）は key を "" で保存する。そうすると、あとから氏名を打っても外した行が消えない
+  const removed = removedState.key === "" || removedState.key === patientKey ? removedState.items : [];
+  const showRemoved = (items: RemovedLine[]) =>
+    setRemovedState({ key: basic.patientFamilyName === "" && basic.patientGivenName === "" ? "" : patientKey, items });
+
+  const hasPrescription = basic.prescription.trim() !== "";
+  const samePrevious =
+    savedPrescription !== null &&
+    savedPrescription.header.trim() === basic.prescriptionHeader.trim() &&
+    savedPrescription.items.trim() === basic.prescription.trim() &&
+    savedPrescription.concomitant.trim() === basic.concomitant.trim();
+  const canUsePrevious = savedPrescription !== null && !samePrevious;
+
+  async function handlePastePrescription() {
+    setRxBusy(true);
+    try {
+      const r = await readClipboardText();
+      // 文言は PasteButton と同じ
+      if (!r.ok) {
+        setRxNote(
+          r.reason === "unsupported"
+            ? "この開き方では貼り付けボタンが使えません。入力欄を長押しして「ペースト」を選んでください。"
+            : "貼り付けが許可されませんでした。入力欄を長押しして「ペースト」を選んでください。",
+        );
+        return;
+      }
+      if (r.text.trim() === "") {
+        setRxNote("コピーした文字がありません。先に処方内容をコピーしてください。");
+        return;
+      }
+      const n = normalizePrescription(r.text);
+      if (n.lines.length === 0) {
+        showRemoved(n.removed);
+        setRxNote("薬剤の行が見つかりませんでした。下の「外した行」を確認してください。入力欄は変えていません。");
+        return;
+      }
+      if (hasPrescription && !window.confirm("今の処方内容を、貼り付けた内容に置き換えます。よろしいですか？")) {
+        setRxNote("置き換えをやめました。入力欄は変えていません。");
+        return;
+      }
+      set({ prescription: n.lines.join("\n") });
+      showRemoved(n.removed);
+      setRxNote(`✓ 貼り付けました（薬剤 ${n.lines.length} 行、外した行 ${n.removed.length} 件）`);
+    } finally {
+      setRxBusy(false);
+    }
+  }
+
+  /** 長押しの「ペースト」で入れた文字など、今の入力欄の内容を同じ規則で整える */
+  function handleTidyPrescription() {
+    const n = normalizePrescription(basic.prescription);
+    // 薬剤の行が 1 つも残らないときは、貼り付けボタンと同じく入力欄を変えない（外した行から 1 行ずつ戻せるだけで、全部消えるのを防ぐ）
+    if (n.lines.length === 0) {
+      showRemoved(n.removed);
+      setRxNote("薬剤の行が見つかりませんでした。下の「外した行」を確認してください。入力欄は変えていません。");
+      return;
+    }
+    set({ prescription: n.lines.join("\n") });
+    showRemoved(n.removed);
+    setRxNote(`✓ 整えました（薬剤 ${n.lines.length} 行、外した行 ${n.removed.length} 件）`);
+  }
+
+  function handleRestoreLine(index: number) {
+    const target = removed[index];
+    if (!target) return;
+    // 見出し・空白行は害がない。人名・医療機関名・患者情報らしい行は、AI に送られる前に確認する
+    if (target.reason !== REASON_HEADING && !window.confirm(RESTORE_CONFIRM)) {
+      setRxNote("戻すのをやめました。この行は処方内容に入れていません。");
+      return;
+    }
+    set({ prescription: appendPrescriptionLine(basic.prescription, target.line) });
+    showRemoved(removed.filter((_, i) => i !== index));
+    setRxNote("✓ 処方内容に戻しました");
+  }
+
+  function handleUsePrevious() {
+    if (!savedPrescription) return;
+    if (hasPrescription && !window.confirm("今の処方内容・併用薬を、患者リストに保存済みの内容に戻します。よろしいですか？")) {
+      return;
+    }
+    set({
+      prescriptionHeader: savedPrescription.header,
+      prescription: savedPrescription.items,
+      concomitant: savedPrescription.concomitant,
+    });
+    showRemoved([]);
+    setRxNote("✓ 保存済みの処方に戻しました");
+  }
 
   return (
     <Section id="step-1" title="① 患者">
@@ -80,11 +190,11 @@ export function BasicInfoSection({
           </Button>
         ))}
       </div>
-      <p className="mt-2 text-base text-slate-800">
+      <p className="mt-2 text-base text-ink">
         架空サンプル①は登録済みの患者の流れ（ケアマネ宛）、②は新しい患者の流れ（医師宛。会話から基本情報が自動入力されます）。
       </p>
       {!open ? (
-        <p className="mt-3 text-slate-800">
+        <p className="mt-3 text-ink">
           {isBasicFilled(basic)
             ? `${patientName} さん ／ ${basic.recipientType}宛 ／ ${basic.pharmacy || "薬局名なし"}`
             : "まだ入力されていません。患者を選ぶか、「＋ 新しい患者」を押してください。"}
@@ -93,7 +203,7 @@ export function BasicInfoSection({
 
       {open ? (
         <div id="basic-body">
-          <p className="mt-4 rounded-lg bg-slate-100 px-3 py-2 text-slate-900">
+          <p className="mt-4 rounded-xl bg-shiroai px-3 py-2 text-ink">
             この画面の内容は、この端末のブラウザの中にだけ保存されます。氏名・住所・生年月日・宛名・薬局名は、AIには送りません
             （氏名などは記号に置き換えてから送ります）。患者リストの記録を直したときは、上の「患者リストに保存」を押してください。
           </p>
@@ -191,7 +301,7 @@ export function BasicInfoSection({
             <fieldset className="min-w-0">
               <legend className="mb-1 font-bold">グループ（患者リストの絞り込み・並びに使います）</legend>
               {groups.length === 0 ? (
-                <p className="text-slate-800">グループがありません。患者リストの「グループを管理」で作れます。</p>
+                <p className="text-ink">グループがありません。患者リストの「グループを管理」で作れます。</p>
               ) : (
                 <div className="flex flex-wrap gap-2">
                   {groups.map((g) => {
@@ -199,15 +309,15 @@ export function BasicInfoSection({
                     return (
                       <label
                         key={g.id}
-                        className={`flex min-h-12 cursor-pointer select-none items-center gap-2 rounded-lg border-2 px-4 py-2 text-lg font-bold has-[:focus-visible]:outline-4 has-[:focus-visible]:outline-offset-2 has-[:focus-visible]:outline-blue-700 ${
+                        className={`flex min-h-12 cursor-pointer select-none items-center gap-2 rounded-xl border-2 px-4 py-2 text-lg font-bold has-[:focus-visible]:outline-4 has-[:focus-visible]:outline-offset-2 has-[:focus-visible]:outline-hanada ${
                           checked
-                            ? "border-blue-800 bg-blue-800 text-white"
-                            : "border-slate-500 bg-white text-slate-900 hover:bg-slate-100"
+                            ? "border-ai bg-ai text-on-ai"
+                            : "border-ink-muted bg-raised text-ink hover:bg-surface"
                         }`}
                       >
                         <input
                           type="checkbox"
-                          className="size-6 shrink-0 accent-blue-900"
+                          className="size-6 shrink-0 accent-ai"
                           checked={checked}
                           onChange={() =>
                             onGroupIdsChange(checked ? groupIds.filter((id) => id !== g.id) : [...groupIds, g.id])
@@ -225,7 +335,7 @@ export function BasicInfoSection({
           <Group title="家族">
             <label className="block">
               <LabelWithBadge text="家族構成・関与（続柄のみ。AIに送ります）" ai={ai("family")} />
-              <span className="mb-1 block text-slate-700">氏名は書かないでください（例: 長女（別居。週末に様子を見に来る））</span>
+              <span className="mb-1 block text-ink-muted">氏名は書かないでください（例: 長女（別居。週末に様子を見に来る））</span>
               <input className={inputClass} value={basic.family} onChange={(e) => set({ family: e.target.value })} />
             </label>
             <div>
@@ -353,13 +463,77 @@ export function BasicInfoSection({
                 onChange={(e) => set({ prescriptionHeader: e.target.value })}
               />
             </Field>
-            <Field label="処方内容（1行に1剤: 薬剤・量・用法・日数。AIに送ります）" hint="処方医名・医療機関名は書かないでください">
+            <Field
+              label="処方内容（1行に1剤: 薬剤・量・用法・日数。AIに送ります）"
+              hint="処方医名・医療機関名は書かないでください。貼り付けると、医師名・患者情報らしい行は自動で外します"
+            >
               <textarea
                 className={`${inputClass} min-h-48`}
                 value={basic.prescription}
                 onChange={(e) => set({ prescription: e.target.value })}
               />
             </Field>
+            <div className="flex flex-wrap items-center gap-3">
+              <Button onClick={handlePastePrescription} disabled={rxBusy}>
+                {rxBusy ? "貼り付け中…" : "クリップボードから貼り付け"}
+              </Button>
+              <Button onClick={handleTidyPrescription} disabled={!hasPrescription}>
+                入力欄の内容を整える
+              </Button>
+              <Button onClick={handleUsePrevious} disabled={!canUsePrevious}>
+                前回の処方を使う
+              </Button>
+            </div>
+            {savedPrescription === null ? (
+              <p className="text-base text-ink-muted">「前回の処方を使う」は、患者リストに保存した記録があるときに使えます。</p>
+            ) : samePrevious ? (
+              <p className="text-base text-ink-muted">✓ 今の処方は、患者リストに保存済みの記録と同じです。</p>
+            ) : null}
+            {rxNote ? (
+              <p role="status" className="text-lg text-ink">
+                {rxNote}
+              </p>
+            ) : null}
+            {removed.length > 0 ? (
+              <div className="rounded-xl border-2 border-akane bg-raised p-3 text-ink">
+                <p className="flex flex-wrap items-center gap-2 font-bold text-akane">
+                  <span aria-hidden="true">⚠</span>
+                  外した行（{removed.length} 件）
+                </p>
+                <p className="mt-1">
+                  AIに送る処方内容から外しました。「見出し・空白行」は害がありません。「⚠」の行（人名・医療機関名・患者情報らしい行）は、
+                  人名などが無いことを確かめたときだけ、「処方内容に戻す」で1行ずつ戻せます（戻すときに確認が出ます）。
+                </p>
+                <ul className="mt-2 space-y-2">
+                  {removed.map((r, i) => {
+                    const harmless = r.reason === REASON_HEADING;
+                    return (
+                      <li
+                        key={`${i}-${r.line}`}
+                        className={`flex flex-wrap items-center gap-2 rounded-xl border-2 bg-raised p-2 text-ink ${
+                          harmless ? "border-line" : "border-akane"
+                        }`}
+                      >
+                        <span className="min-w-0 flex-1 basis-48 break-words">{r.line}</span>
+                        <span
+                          className={`rounded-full border-2 bg-raised px-2 py-0.5 text-base font-bold ${
+                            harmless ? "border-line text-ink" : "border-akane text-akane"
+                          }`}
+                        >
+                          {harmless ? r.reason : `⚠ ${r.reason}`}
+                        </span>
+                        <Button aria-label={`「${r.line}」を処方内容に戻す`} onClick={() => handleRestoreLine(i)}>
+                          処方内容に戻す
+                        </Button>
+                      </li>
+                    );
+                  })}
+                </ul>
+                <Button className="mt-2" onClick={() => showRemoved([])}>
+                  外した行の表示を閉じる
+                </Button>
+              </div>
+            ) : null}
             <Field label="併用薬">
               <input
                 className={inputClass}
@@ -372,6 +546,18 @@ export function BasicInfoSection({
           <Group title="薬局・今回の訪問の日付（患者の記録には入りません）">
             <Field label="薬局名・薬剤師名" hint="この端末の設定です。患者を切り替えても保たれます">
               <input className={inputClass} value={basic.pharmacy} onChange={(e) => set({ pharmacy: e.target.value })} />
+            </Field>
+            <Field
+              label="薬局の連絡先（TEL・FAX など。FAX 送信票とメールの署名に使います。AI には送りません）"
+              hint="この端末の設定です。患者を切り替えても保たれます"
+            >
+              <textarea
+                className={`${inputClass} min-h-24`}
+                value={basic.pharmacyContact ?? ""}
+                onChange={(e) => set({ pharmacyContact: e.target.value })}
+                placeholder={"例: TEL 000-000-0000\nFAX 000-000-0000"}
+                autoComplete="off"
+              />
             </Field>
             <div className="grid gap-4 sm:grid-cols-2">
               <Field label="報告日（訪問日）">

@@ -25,6 +25,7 @@ import {
 import { containsOriginal, maskText, unmaskText } from "@/lib/mask";
 import type { MaskResult } from "@/lib/mask/types";
 import { formatReport } from "@/lib/report/format";
+import { buildChat, buildEmail, buildPrintModel, mapPrintModelText, type FormatArgs } from "@/lib/report/formats";
 import {
   ReportDraftSchema,
   type DraftContext,
@@ -43,7 +44,9 @@ import {
   isBasicFilled,
   maskContext,
   mergeTokens,
+  riskyPrescriptionLines,
 } from "@/lib/ui/basic-info";
+import { normalizePrescription } from "@/lib/ui/prescription";
 import { listUnsureLabels } from "@/lib/ui/draft-utils";
 import { useOnlineStatus, useServerHealth } from "@/lib/ui/health";
 import {
@@ -59,6 +62,7 @@ import {
   clearEverything,
   loadBasic,
   loadPharmacy,
+  loadPharmacyContact,
   loadSession,
   loadTranscript,
   loadWorkBase,
@@ -111,6 +115,7 @@ function visitOf(b: BasicInfo): VisitFields {
     reportDate: b.reportDate || todayIso(),
     nextVisitDate: "",
     pharmacy: b.pharmacy,
+    pharmacyContact: b.pharmacyContact ?? "",
   };
 }
 
@@ -147,7 +152,12 @@ type WorkInit = { store: PatientStore; base: Patient; basic: BasicInfo; migrated
 function initWork(): WorkInit {
   let store = loadStore();
   const saved = loadBasic();
-  const legacy: BasicInfo = { ...saved, pharmacy: loadPharmacy() ?? saved.pharmacy, reportDate: saved.reportDate || todayIso() };
+  const legacy: BasicInfo = {
+    ...saved,
+    pharmacy: loadPharmacy() ?? saved.pharmacy,
+    pharmacyContact: loadPharmacyContact() ?? saved.pharmacyContact ?? "",
+    reportDate: saved.reportDate || todayIso(),
+  };
   const workBase = loadWorkBase(new Set(store.groups.map((g) => g.id)));
 
   if (workBase) return { store, base: workBase, basic: legacy, migrated: false };
@@ -182,6 +192,8 @@ function ReportAppInner() {
   const [ackNoPatient, setAckNoPatient] = useState(false);
   // 置き換えられなかった名前らしい語が残ったまま送ることを了承した（辞書に足せば警告は消える）
   const [ackWarnings, setAckWarnings] = useState(false);
+  // 処方内容の欄に残った、人名・医療機関名・患者情報らしい行をそのまま送ることを了承した。了承した行の組を覚える（行が変われば了承は無効）
+  const [ackRxSig, setAckRxSig] = useState<string | null>(null);
   const [drafting, setDrafting] = useState(false);
   const [elapsedSec, setElapsedSec] = useState(0);
   const [draftError, setDraftError] = useState<DraftErrorInfo | null>(null);
@@ -196,6 +208,7 @@ function ReportAppInner() {
   // 端末内に保存（失敗しても動く）
   useEffect(() => saveRaw("basic", JSON.stringify(basic)), [basic]);
   useEffect(() => saveRaw("pharmacy", basic.pharmacy), [basic.pharmacy]);
+  useEffect(() => saveRaw("pharmacyContact", basic.pharmacyContact ?? ""), [basic.pharmacyContact]);
   useEffect(() => saveRaw("workbase", JSON.stringify(base)), [base]);
   useEffect(() => saveRaw("transcript", transcript), [transcript]);
   useEffect(() => saveRaw("session", session ? JSON.stringify(session) : null), [session]);
@@ -217,6 +230,10 @@ function ReportAppInner() {
   const maskStale = maskState !== null && maskState.key !== maskKey;
   const sessionStale = session !== null && session.sourceKey !== draftSourceKey;
   const basicFilled = isBasicFilled(basic);
+  // 処方内容の欄にある、人名・医療機関名・患者情報らしい行（貼り付けボタンを通らずに入った文字も含む）
+  const rxRisky = useMemo(() => riskyPrescriptionLines(basic.prescription), [basic.prescription]);
+  const rxSig = JSON.stringify(rxRisky.map((r) => r.line));
+  const ackRx = rxRisky.length === 0 || ackRxSig === rxSig;
 
   // 送信中に入力や患者が変わったかを調べるための、最新の値
   const latestRef = useRef({ draftSourceKey, baseId: base.id, basic });
@@ -255,6 +272,20 @@ function ReportAppInner() {
     setDraftError(null);
   }
 
+  /** 処方内容の欄を、薬剤の行だけに整える（人名・医療機関名・患者情報らしい行と見出しを外す）。すぐにマスクし直す */
+  function handleTidyRx(): void {
+    const n = normalizePrescription(basic.prescription);
+    if (n.lines.length === 0 && !window.confirm("薬剤の行が残らないため、処方内容の欄が空になります。よろしいですか？")) return;
+    const next: BasicInfo = { ...basic, prescription: n.lines.join("\n") };
+    setBasic(next);
+    setNotice(null);
+    setMaskState(makeMaskState(next, transcript));
+    setAckNoPatient(false);
+    setAckWarnings(false);
+    setLeakWarning(false);
+    setDraftError(null);
+  }
+
   /** 警告に出た語（辞書に無い名前らしい語）を辞書に足して、すぐにマスクし直す */
   function handleAddMaskWord(text: string, kind: "family" | "other"): void {
     const word = text.trim();
@@ -282,6 +313,8 @@ function ReportAppInner() {
     if (!tokens.some((t) => t.kind === "patient") && !ackNoPatient) return;
     // 名前らしい語の警告が残っているときは、辞書に足すか、人名でないことを了承しないと送れない
     if (maskState.result.warnings.length > 0 && !ackWarnings) return;
+    // 処方内容に人名・医療機関名・患者情報らしい行が残っているときも、了承が要る
+    if (!ackRx) return;
     const context = maskState.context;
 
     // 送る前の最終確認: 会話にも文脈にも、辞書の語（氏名・住所・電話など）が残っていないこと。
@@ -519,6 +552,7 @@ function ReportAppInner() {
       reportDate: basic.reportDate,
       nextVisitDate: basic.nextVisitDate,
       pharmacy: basic.pharmacy,
+      pharmacyContact: basic.pharmacyContact ?? "",
     });
     if (stableStringify(normalized) !== stableStringify(basic)) commitBasicKeepingDraft(normalized, []);
     setNotice(
@@ -593,13 +627,14 @@ function ReportAppInner() {
       reportDate: sample.basic.reportDate,
       nextVisitDate: sample.basic.nextVisitDate,
       pharmacy: basic.pharmacy || sample.basic.pharmacy,
+      pharmacyContact: basic.pharmacyContact || sample.basic.pharmacyContact || "",
     };
 
     if (sample.asNewPatient) {
       // 「新しい患者」として開く（患者リストには登録しない）。下書きのあと、会話から基本情報が自動入力され、
       // 「患者リストに保存」で登録する流れを見せるためのサンプル
       beginPatient(createEmptyPatient(), { ...store, selectedPatientId: null }, visit, true);
-      setBasic({ ...sample.basic, pharmacy: visit.pharmacy });
+      setBasic({ ...sample.basic, pharmacy: visit.pharmacy, pharmacyContact: visit.pharmacyContact });
       setTranscript(sample.transcript);
       setBasicOpen(false);
       scrollToId("step-2");
@@ -629,12 +664,13 @@ function ReportAppInner() {
   /** 作業中の入力（基本情報・会話・下書き）を空にする。patientsAlso のときは患者リストと薬局名も消す */
   function clearWork(patientsAlso: boolean): void {
     const pharmacy = patientsAlso ? "" : basic.pharmacy;
+    const pharmacyContact = patientsAlso ? "" : (basic.pharmacyContact ?? "");
     if (patientsAlso) clearEverything();
     else clearAllSaved();
     const fresh = createEmptyPatient();
     setStore(patientsAlso ? createEmptyStore() : { ...store, selectedPatientId: null });
     setBase(fresh);
-    setBasic(patientToBasicInfo(fresh, { ...visitOf(basic), pharmacy }));
+    setBasic(patientToBasicInfo(fresh, { ...visitOf(basic), pharmacy, pharmacyContact }));
     setTranscript("");
     setAiFields([]);
     setNotice(null);
@@ -684,6 +720,29 @@ function ReportAppInner() {
     return unmaskText(text, session.tokens);
   }, [session, confirmed, sessionStale, basic]);
 
+  // メール・チャット・印刷（FAX）用。メール・チャットは既定で患者名を入れない（チェックで切り替え）
+  const [includePatientName, setIncludePatientName] = useState(false);
+  const sendFormats = useMemo(() => {
+    if (!session || !confirmed || sessionStale) return null;
+    const args: FormatArgs = {
+      draft: session.draft,
+      header: buildHeader(basic),
+      fixedFields: buildFixedFields(basic),
+      recipientType: session.recipientType,
+      pharmacyContact: (basic.pharmacyContact ?? "").trim(),
+      includePatientName,
+      // 患者名を入れないとき、【家族N】を実名に戻さず続柄にする（辞書の family と同じ並び）
+      familyRelations: (buildDictionary(basic).family ?? []).map((f) => f.relation),
+    };
+    const back = (s: string) => unmaskText(s, session.tokens);
+    const mail = buildEmail(args);
+    return {
+      email: { subject: back(mail.subject), body: back(mail.body) },
+      chat: back(buildChat(args)),
+      printModel: mapPrintModelText(buildPrintModel(args), back),
+    };
+  }, [session, confirmed, sessionStale, basic, includePatientName]);
+
   // ステップ表示
   const current = !basicFilled ? 1 : !session || sessionStale ? 2 : !confirmed ? 3 : 4;
   const statusOf = (n: 1 | 2 | 3 | 4): StepStatus => (n === current ? "current" : n < current ? "done" : "todo");
@@ -698,8 +757,8 @@ function ReportAppInner() {
       <StepBar statuses={statuses} onJump={jump} />
       <main className="mx-auto w-full max-w-[900px] space-y-6 px-4 pb-24 pt-6">
         <header className="print:hidden">
-          <h1 className="text-3xl font-bold text-slate-900">在宅レポAI（仮）</h1>
-          <p className="mt-2 text-slate-800">
+          <h1 className="font-display text-3xl font-bold text-ai">在宅レポAI（仮）</h1>
+          <p className="mt-2 text-ink">
             訪問中の会話から「居宅療養管理指導報告書」の下書きを作ります。AIは下書きまでです。確認と判断は薬剤師が行います。
           </p>
         </header>
@@ -717,6 +776,7 @@ function ReportAppInner() {
             groupIds={base.groupIds}
             onGroupIdsChange={handleGroupIdsChange}
             aiFields={aiFields}
+            savedPrescription={savedPatient?.prescription ?? null}
             top={
               <>
                 <PatientPicker
@@ -769,6 +829,10 @@ function ReportAppInner() {
             ackWarnings={ackWarnings}
             onAckWarningsChange={setAckWarnings}
             onAddMaskWord={handleAddMaskWord}
+            rxRisky={rxRisky}
+            ackRx={ackRx}
+            onAckRxChange={(v) => setAckRxSig(v ? rxSig : null)}
+            onTidyRx={handleTidyRx}
           />
           {session && showSuggestions ? (
             <div id="suggestions" className="scroll-mt-24">
@@ -809,6 +873,11 @@ function ReportAppInner() {
               scrollToId("step-3");
             }}
             reportText={reportText}
+            email={sendFormats?.email ?? { subject: "", body: "" }}
+            chat={sendFormats?.chat ?? ""}
+            printModel={sendFormats?.printModel ?? null}
+            includePatientName={includePatientName}
+            onIncludePatientNameChange={setIncludePatientName}
             stale={sessionStale}
           />
         ) : null}

@@ -30,7 +30,7 @@ function GroupRow({
   }
 
   return (
-    <li className="rounded-xl border-2 border-slate-300 bg-white p-3">
+    <li className="rounded-xl border-2 border-line bg-raised p-3">
       <form onSubmit={submit} className="flex flex-wrap items-center gap-2">
         <input
           aria-label={`グループ「${group.name}」の名前`}
@@ -38,7 +38,7 @@ function GroupRow({
           value={name}
           onChange={(e) => setName(e.target.value)}
         />
-        <span className="text-slate-800">{memberCount}人</span>
+        <span className="text-ink">{memberCount}人</span>
         <Button type="submit" disabled={!canRename}>
           名前を変更
         </Button>
@@ -46,7 +46,7 @@ function GroupRow({
           削除
         </Button>
       </form>
-      {duplicated ? <p className="mt-1 font-bold text-amber-950">同じ名前のグループがあります。</p> : null}
+      {duplicated ? <p className="mt-1 font-bold text-akane">同じ名前のグループがあります。</p> : null}
     </li>
   );
 }
@@ -84,14 +84,14 @@ export function GroupManager({
   }
 
   return (
-    <div className="mt-4 rounded-xl border-2 border-slate-400 bg-slate-50 p-3 sm:p-4" aria-label="グループの管理">
+    <div className="mt-4 rounded-xl border-2 border-line bg-surface p-3 sm:p-4" aria-label="グループの管理">
       <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
         <h3 className="text-xl font-bold">グループを管理</h3>
         <Button onClick={onClose}>閉じる</Button>
       </div>
 
       {store.groups.length === 0 ? (
-        <p className="mb-3 text-slate-800">グループはまだありません。下の欄から作れます（例: 月曜の訪問、○○施設）。</p>
+        <p className="mb-3 text-ink">グループはまだありません。下の欄から作れます（例: 月曜の訪問、○○施設）。</p>
       ) : (
         <ul className="mb-3 space-y-2">
           {store.groups.map((g) => (
@@ -119,8 +119,8 @@ export function GroupManager({
           ＋ グループを追加
         </Button>
       </form>
-      {duplicated ? <p className="mt-1 font-bold text-amber-950">同じ名前のグループがあります。</p> : null}
-      <p className="mt-3 text-slate-800">
+      {duplicated ? <p className="mt-1 font-bold text-akane">同じ名前のグループがあります。</p> : null}
+      <p className="mt-3 text-ink">
         患者をグループに入れるには、患者を選んで「この患者を編集」を開き、「グループ」にチェックを入れて保存します。
       </p>
     </div>

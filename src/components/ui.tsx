@@ -5,15 +5,15 @@
 import type { ButtonHTMLAttributes, ReactNode } from "react";
 
 export const inputClass =
-  "block w-full min-h-12 rounded-lg border-2 border-slate-500 bg-white px-3 py-2 text-lg text-slate-900 placeholder:text-slate-500 focus-visible:outline-4 focus-visible:outline-offset-2 focus-visible:outline-blue-700";
+  "block w-full min-h-12 rounded-md border-2 border-ink-muted bg-raised px-3 py-2 text-lg text-ink placeholder:text-ink-muted focus-visible:outline-4 focus-visible:outline-offset-2 focus-visible:outline-hanada";
 
 const buttonBase =
-  "inline-flex min-h-12 items-center justify-center gap-2 rounded-lg border-2 px-5 py-2 text-lg font-bold cursor-pointer disabled:cursor-not-allowed disabled:opacity-50 focus-visible:outline-4 focus-visible:outline-offset-2 focus-visible:outline-blue-700";
+  "inline-flex min-h-12 items-center justify-center gap-2 rounded-xl border-2 px-5 py-2 text-lg font-bold cursor-pointer disabled:cursor-not-allowed disabled:opacity-50 focus-visible:outline-4 focus-visible:outline-offset-2 focus-visible:outline-hanada";
 
 const buttonVariants = {
-  primary: "border-blue-800 bg-blue-800 text-white hover:bg-blue-900",
-  secondary: "border-slate-600 bg-white text-slate-900 hover:bg-slate-100",
-  danger: "border-red-800 bg-white text-red-900 hover:bg-red-50",
+  primary: "border-ai bg-ai text-on-ai hover:bg-ai-hover",
+  secondary: "border-ink-muted bg-raised text-ink hover:bg-surface",
+  danger: "border-akane bg-akane text-on-akane hover:opacity-90",
 } as const;
 
 export function Button({
@@ -38,8 +38,8 @@ export function Section({
   className?: string;
 }) {
   return (
-    <section id={id} className={`scroll-mt-24 rounded-2xl border-2 border-slate-300 bg-white p-4 sm:p-6 ${className}`}>
-      <h2 className="mb-4 text-2xl font-bold text-slate-900 print:hidden">{title}</h2>
+    <section id={id} className={`scroll-mt-24 rounded-xl border border-line bg-raised p-4 sm:p-6 ${className}`}>
+      <h2 className="mb-4 font-display text-2xl font-bold text-ink print:hidden">{title}</h2>
       {children}
     </section>
   );
@@ -49,8 +49,8 @@ export function Section({
 export function Field({ label, hint, children }: { label: ReactNode; hint?: ReactNode; children: ReactNode }) {
   return (
     <label className="block">
-      <span className="mb-1 block font-bold text-slate-900">{label}</span>
-      {hint ? <span className="mb-1 block text-slate-700">{hint}</span> : null}
+      <span className="mb-1 block font-bold text-ink">{label}</span>
+      {hint ? <span className="mb-1 block text-ink-muted">{hint}</span> : null}
       {children}
     </label>
   );
@@ -59,7 +59,7 @@ export function Field({ label, hint, children }: { label: ReactNode; hint?: Reac
 /** 「要確認」バッジ。色だけに頼らず、⚠ と文字を付ける */
 export function UnsureBadge({ text = "要確認" }: { text?: string }) {
   return (
-    <span className="inline-flex items-center gap-1 rounded-md border-2 border-amber-700 bg-amber-200 px-2 py-0.5 text-base font-bold text-amber-950">
+    <span className="inline-flex items-center gap-1 rounded-full border-2 border-akane bg-raised px-2 py-0.5 text-base font-bold text-akane">
       <span aria-hidden="true">⚠</span>
       {text}
     </span>
@@ -69,7 +69,7 @@ export function UnsureBadge({ text = "要確認" }: { text?: string }) {
 /** 「AI の提案（会話から）」バッジ。会話から自動入力した項目に付ける（「要確認」とは別。確認は薬剤師が行う） */
 export function AiBadge({ text = "AI の提案（会話から）" }: { text?: string }) {
   return (
-    <span className="inline-flex items-center gap-1 rounded-md border-2 border-blue-800 bg-blue-50 px-2 py-0.5 text-base font-bold text-blue-950">
+    <span className="inline-flex items-center gap-1 rounded-full border-2 border-ai bg-shiroai px-2 py-0.5 text-base font-bold text-ai">
       <span aria-hidden="true">✦</span>
       {text}
     </span>
@@ -79,8 +79,10 @@ export function AiBadge({ text = "AI の提案（会話から）" }: { text?: st
 /** 原文にない引用などの警告表示 */
 export function WarnText({ children }: { children: ReactNode }) {
   return (
-    <p role="alert" className="mt-2 rounded-lg border-2 border-amber-700 bg-amber-50 px-3 py-2 font-bold text-amber-950">
-      <span aria-hidden="true">⚠ </span>
+    <p role="alert" className="mt-2 rounded-xl border-2 border-akane bg-raised px-3 py-2 font-bold text-ink">
+      <span aria-hidden="true" className="text-akane">
+        ⚠{" "}
+      </span>
       {children}
     </p>
   );
@@ -113,15 +115,15 @@ export function ChoiceButtons({
         const isUnsure = o === unsureLabel;
         const tone = isUnsure
           ? selected
-            ? "border-amber-800 bg-amber-300 text-amber-950"
-            : "border-amber-700 bg-amber-50 text-amber-950 hover:bg-amber-100"
+            ? "border-akane bg-akane text-on-akane"
+            : "border-akane bg-raised text-akane hover:bg-surface"
           : selected
-            ? "border-blue-800 bg-blue-800 text-white"
-            : "border-slate-500 bg-white text-slate-900 hover:bg-slate-100";
+            ? "border-ai bg-ai text-on-ai"
+            : "border-ink-muted bg-raised text-ink hover:bg-surface";
         return (
           <label
             key={o}
-            className={`flex min-h-12 cursor-pointer select-none items-center justify-center gap-1 rounded-lg border-2 px-4 py-2 text-lg font-bold has-[:focus-visible]:outline-4 has-[:focus-visible]:outline-offset-2 has-[:focus-visible]:outline-blue-700 ${tone}`}
+            className={`flex min-h-12 cursor-pointer select-none items-center justify-center gap-1 rounded-xl border-2 px-4 py-2 text-lg font-bold has-[:focus-visible]:outline-4 has-[:focus-visible]:outline-offset-2 has-[:focus-visible]:outline-hanada ${tone}`}
           >
             <input
               type="radio"

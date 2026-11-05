@@ -60,6 +60,8 @@ export type BasicInfo = {
   addresseeCareManager: string;
   addresseeDoctor: string;
   pharmacy: string;
+  /** 薬局の連絡先（TEL・FAX など）。FAX 送信票とメールの署名に使う。端末の設定。API には送らない */
+  pharmacyContact?: string;
   /** YYYY-MM-DD（報告日 = 訪問日） */
   reportDate: string;
   /** YYYY-MM-DD */

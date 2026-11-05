@@ -40,10 +40,10 @@ function fullName(p: Patient): string {
 }
 
 function filterButtonClass(selected: boolean): string {
-  return `inline-flex min-h-12 cursor-pointer items-center justify-center gap-1 rounded-lg border-2 px-4 py-2 text-lg font-bold focus-visible:outline-4 focus-visible:outline-offset-2 focus-visible:outline-blue-700 ${
+  return `inline-flex min-h-12 cursor-pointer items-center justify-center gap-1 rounded-xl border-2 px-4 py-2 text-lg font-bold focus-visible:outline-4 focus-visible:outline-offset-2 focus-visible:outline-hanada ${
     selected
-      ? "border-blue-800 bg-blue-800 text-white"
-      : "border-slate-500 bg-white text-slate-900 hover:bg-slate-100"
+      ? "border-ai bg-ai text-on-ai"
+      : "border-ink-muted bg-raised text-ink hover:bg-surface"
   }`;
 }
 
@@ -187,10 +187,10 @@ export function PatientPicker({ store, selectedId, onSelect, onNew, onStoreChang
         </div>
       ) : null}
       {manual && searching ? (
-        <p className="mt-2 text-slate-800">検索中は並べ替えできません。検索を空にすると ↑↓ が出ます。</p>
+        <p className="mt-2 text-ink">検索中は並べ替えできません。検索を空にすると ↑↓ が出ます。</p>
       ) : null}
       {group && !manual ? (
-        <p className="mt-2 text-slate-800">「手動」にすると、各患者の ↑↓ で順番を変えられます。</p>
+        <p className="mt-2 text-ink">「手動」にすると、各患者の ↑↓ で順番を変えられます。</p>
       ) : null}
 
       <p className="mt-3 font-bold" role="status">
@@ -198,11 +198,11 @@ export function PatientPicker({ store, selectedId, onSelect, onNew, onStoreChang
       </p>
 
       {store.patients.length === 0 ? (
-        <p className="mt-2 rounded-lg bg-slate-100 px-3 py-3 text-slate-900">
+        <p className="mt-2 rounded-xl bg-shiroai px-3 py-3 text-ink">
           まだ患者が登録されていません。「＋ 新しい患者」から氏名などを入れて登録すると、次回からここで選べます。
         </p>
       ) : list.length === 0 ? (
-        <p className="mt-2 rounded-lg bg-slate-100 px-3 py-3 text-slate-900">条件に合う患者がいません。</p>
+        <p className="mt-2 rounded-xl bg-shiroai px-3 py-3 text-ink">条件に合う患者がいません。</p>
       ) : (
         <ul className="mt-2 max-h-[30rem] space-y-2 overflow-y-auto pr-1" aria-label="患者の一覧">
           {list.map((p, i) => {
@@ -217,21 +217,21 @@ export function PatientPicker({ store, selectedId, onSelect, onNew, onStoreChang
                   type="button"
                   aria-pressed={selected}
                   onClick={() => onSelect(p.id)}
-                  className={`min-h-14 flex-1 basis-60 cursor-pointer rounded-lg border-2 px-4 py-2 text-left focus-visible:outline-4 focus-visible:outline-offset-2 focus-visible:outline-blue-700 ${
+                  className={`min-h-14 flex-1 basis-60 cursor-pointer rounded-xl border-2 px-4 py-2 text-left focus-visible:outline-4 focus-visible:outline-offset-2 focus-visible:outline-hanada ${
                     selected
-                      ? "border-blue-800 bg-blue-50 ring-2 ring-blue-800"
-                      : "border-slate-500 bg-white hover:bg-slate-100"
+                      ? "border-ai bg-shiroai ring-2 ring-ai"
+                      : "border-ink-muted bg-raised hover:bg-surface"
                   }`}
                 >
                   <span className="flex flex-wrap items-baseline gap-x-3">
-                    <span className="text-xl font-bold text-slate-900">
+                    <span className="text-xl font-bold text-ink">
                       {selected ? <span aria-hidden="true">✓ </span> : null}
                       {fullName(p)}
                     </span>
-                    {kana ? <span className="text-base text-slate-800">{kana}</span> : null}
-                    {selected ? <span className="text-base font-bold text-blue-900">選択中</span> : null}
+                    {kana ? <span className="text-base text-ink">{kana}</span> : null}
+                    {selected ? <span className="text-base font-bold text-ai">選択中</span> : null}
                   </span>
-                  <span className="mt-0.5 block text-base text-slate-800">
+                  <span className="mt-0.5 block text-base text-ink">
                     {birth ? `${birth}${age !== null ? ` ／ ${age}歳` : ""}` : "生年月日なし"}
                     {groups.length > 0 ? ` ／ ${groups.join("・")}` : ""}
                   </span>

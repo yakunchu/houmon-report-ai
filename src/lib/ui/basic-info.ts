@@ -5,6 +5,7 @@ import { maskText } from "../mask";
 import type { DraftContext } from "@/lib/report/schema";
 import type { MaskToken, MaskWarning, PersonalInfoDictionary } from "@/lib/mask/types";
 import type { FixedFields, ReportHeader } from "@/lib/report/format";
+import { REASON_DOCTOR, REASON_PATIENT, normalizePrescription, type RemovedLine } from "./prescription";
 import type { BasicInfo } from "./types";
 
 /** 読点・カンマ・改行で区切って空要素を除く */
@@ -176,4 +177,16 @@ export function buildFixedFields(b: BasicInfo): FixedFields {
 /** 患者の姓または名が入っているか（ステップ①の完了判定） */
 export function isBasicFilled(b: BasicInfo): boolean {
   return b.patientFamilyName.trim() !== "" || b.patientGivenName.trim() !== "";
+}
+
+/**
+ * 処方内容の欄に残っている、人名・医療機関名・患者情報らしい行（見出し・空白行は除く）。
+ * 貼り付けボタンを使わず手で打った・長押しで貼った文字にも効く。下書きを作る前に、AI に送られる前の確認に使う。
+ * 辞書で記号に置き換わるのは、宛名と処方見出しに書いた名前だけ。処方欄にしか出てこない医師名・医療機関名は
+ * そのまま送られるため、ここで見つけて薬剤師に確認してもらう。
+ */
+export function riskyPrescriptionLines(prescription: string): RemovedLine[] {
+  return normalizePrescription(prescription).removed.filter(
+    (r) => r.reason === REASON_DOCTOR || r.reason === REASON_PATIENT,
+  );
 }

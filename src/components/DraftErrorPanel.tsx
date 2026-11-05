@@ -248,7 +248,7 @@ export function DraftErrorPanel({
   const detail = buildErrorDetail(info);
   const showDetail = guide.admin === true || copyState === "failed";
   const tone =
-    guide.icon === "⚠" ? "border-amber-700 bg-amber-50 text-amber-950" : "border-red-800 bg-red-50 text-red-950";
+    guide.icon === "⚠" ? "border-akane bg-raised text-ink" : "border-akane bg-raised text-ink";
 
   async function handleCopy(): Promise<void> {
     const method = await copyText(detail);
@@ -256,9 +256,11 @@ export function DraftErrorPanel({
   }
 
   return (
-    <div role="alert" className={`mt-3 rounded-lg border-2 p-4 ${tone}`}>
+    <div role="alert" className={`mt-3 rounded-xl border-2 p-4 ${tone}`}>
       <p className="break-words text-xl font-bold">
-        <span aria-hidden="true">{guide.icon} </span>
+        <span aria-hidden="true" className="text-akane">
+          {guide.icon}{" "}
+        </span>
         下書きを作れませんでした：{guide.heading}
       </p>
       <p className="mt-2 break-words text-lg">{key === "unknown" && info.message !== "" ? info.message : guide.description}</p>
@@ -273,7 +275,7 @@ export function DraftErrorPanel({
       </ol>
 
       {showDetail ? (
-        <p className="mt-3 select-all break-all rounded-lg border-2 border-current bg-white p-2 text-lg text-slate-900">
+        <p className="mt-3 select-all break-all rounded-md border-2 border-current bg-raised p-2 text-lg text-ink">
           {detail}
         </p>
       ) : null}
