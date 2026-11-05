@@ -11,12 +11,12 @@ import type { PrintModel, PrintPair, PrintTable } from "@/lib/report/formats";
 
 const PRINT_CSS = `
 @page { size: A4; margin: 15mm }
-.print-report { font-size: 14px; line-height: 1.45; color: #000; background: #fff; }
+.print-report { font-size: 14px; line-height: 1.38; color: #000; background: #fff; }
 .print-report * { box-sizing: border-box; }
-.print-report h1 { font-size: 20px; font-weight: 700; margin: 6px 0 2px; text-align: center; letter-spacing: 0.1em; }
-.print-report h2 { font-size: 14px; font-weight: 700; margin: 8px 0 3px; border-bottom: 1px solid #000; }
-.print-report table { width: 100%; border-collapse: collapse; font-size: 13.3px; line-height: 1.35; }
-.print-report th, .print-report td { border: 1px solid #000; padding: 1px 4px; text-align: left; vertical-align: top; }
+.print-report h1 { font-size: 20px; font-weight: 700; margin: 4px 0 0; text-align: center; letter-spacing: 0.1em; }
+.print-report h2 { font-size: 14px; font-weight: 700; margin: 6px 0 2px; border-bottom: 1px solid #000; }
+.print-report table { width: 100%; border-collapse: collapse; font-size: 13.3px; line-height: 1.28; }
+.print-report th, .print-report td { border: 1px solid #000; padding: 0 4px; text-align: left; vertical-align: top; }
 .print-report th { font-weight: 700; }
 .print-report tr { break-inside: avoid; }
 .print-report .head-row { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; font-weight: 700; }
@@ -27,10 +27,10 @@ const PRINT_CSS = `
 .print-report .item { width: 6.2em; }
 .print-report .soap-text { white-space: pre-wrap; word-break: break-word; }
 .print-report ul { margin: 0; padding: 0; list-style: none; }
-.print-report .contact { border: 1px solid #000; padding: 3px 6px; margin: 8px 0 0; }
+.print-report .contact { border: 1px solid #000; padding: 2px 6px; margin: 6px 0 0; }
 .print-report .contact h2 { margin: 0 0 2px; }
 .print-report .contact li { font-weight: 700; }
-.print-report .pair-2col { display: grid; grid-template-columns: 1fr 1fr; gap: 4mm; align-items: start; margin-top: 8px; }
+.print-report .pair-2col { display: grid; grid-template-columns: 1fr 1fr; gap: 4mm; align-items: start; margin-top: 6px; }
 .print-report .pair-2col h2 { margin-top: 0; }
 .print-report .appendix { break-before: page; page-break-before: always; }
 .print-report .appendix li { font-size: 14px; }
