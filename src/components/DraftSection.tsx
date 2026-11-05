@@ -1,5 +1,5 @@
 /** ③ 下書きフォーム。報告書ソフトと同じ並びで、選択式の欄・残薬・SOAP を直せる */
-import { useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode, type TextareaHTMLAttributes } from "react";
 import {
   CHOICE_FIELDS,
   EVIDENCE_LABELS,
@@ -219,24 +219,29 @@ function ContactNotesCard({ draft, onChange }: { draft: ReportDraft; onChange: (
       {rows.length === 0 ? <p className="mb-2">連絡事項はありません。必要なら追加してください。</p> : null}
       <div className="space-y-3">
         {rows.map((n, i) => (
-          <div key={i} className="flex flex-wrap items-end gap-2">
-            <label className="block min-w-0 flex-1">
-              <span className="mb-1 block font-bold text-ink">{i + 1}件目</span>
-              <input
-                className={inputClass}
-                aria-label={`連絡事項${i + 1}件目`}
-                placeholder="例: 残薬4日分は次回処方で日数調整をご検討いただきたい"
-                value={n}
-                onChange={(e) => onChange(patchContactNote(draft, i, e.target.value))}
-              />
-            </label>
-            <Button
-              variant="danger"
-              aria-label={`連絡事項${i + 1}件目を削除`}
-              onClick={() => onChange(removeContactNote(draft, i))}
-            >
-              削除
-            </Button>
+          // スマホ幅でも 1 件が全文読めるよう、削除は見出しの行に置き、本文は幅いっぱいの 2 行欄にする
+          <div key={i}>
+            <div className="mb-1 flex items-center justify-between gap-2">
+              <label htmlFor={`contact-note-${i + 1}`} className="font-bold text-ink">
+                {i + 1}件目
+              </label>
+              <Button
+                variant="danger"
+                aria-label={`連絡事項${i + 1}件目を削除`}
+                onClick={() => onChange(removeContactNote(draft, i))}
+              >
+                削除
+              </Button>
+            </div>
+            <AutoGrowTextarea
+              id={`contact-note-${i + 1}`}
+              rows={2}
+              className={`${inputClass} resize-none overflow-hidden`}
+              aria-label={`連絡事項${i + 1}件目`}
+              placeholder="例: 残薬4日分は次回処方で日数調整をご検討いただきたい"
+              value={n}
+              onChange={(e) => onChange(patchContactNote(draft, i, e.target.value))}
+            />
           </div>
         ))}
       </div>
@@ -246,6 +251,19 @@ function ContactNotesCard({ draft, onChange }: { draft: ReportDraft; onChange: (
       {full ? <p className="mt-2">連絡事項は最大 {CONTACT_NOTES_MAX} 件までです。</p> : null}
     </FieldCard>
   );
+}
+
+/** 中身の行数に合わせて高さが伸びる入力欄（スマホ幅でも 1 文が全部読めるように） */
+function AutoGrowTextarea(props: TextareaHTMLAttributes<HTMLTextAreaElement>) {
+  const ref = useRef<HTMLTextAreaElement>(null);
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    el.style.height = "auto";
+    // scrollHeight は枠線を含まないので、上下の枠線（2px × 2）を足す
+    el.style.height = `${el.scrollHeight + 4}px`;
+  }, [props.value]);
+  return <textarea ref={ref} {...props} />;
 }
 
 /** 根拠（会話からの引用）。原文に無い引用には警告を付ける */
