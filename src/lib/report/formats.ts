@@ -371,13 +371,20 @@ export function buildChat(args: FormatArgs, max: number = CHAT_MAX_CHARS): strin
   const makeFromNotes = (factCount: number): { lines: string[]; shrinkable: number[] } => {
     const lines: string[] = [];
     const shrinkable: number[] = [];
+    // ケアマネ・その他宛ての 1 行目は「要点」: 連絡事項の最後の事実（ルール上は服薬状況の要約）＋「（M/D 訪問）」。
+    // 事実が無ければ「M/D 訪問の報告です。」で始める
+    const lead = doctor ? "" : (factNotes[factNotes.length - 1] ?? "");
+    const middle = doctor ? factNotes : factNotes.slice(0, Math.max(0, factNotes.length - 1));
     if (doctor) {
       shrinkable.push(lines.length);
       lines.push(`${namePrefix}${notes[0]}`);
+    } else if (lead !== "") {
+      shrinkable.push(lines.length);
+      lines.push(`${namePrefix}${lead}${md !== "" ? `（${md} 訪問）` : ""}`);
     } else {
       lines.push(`${namePrefix}${md !== "" ? `${md} 訪問` : "訪問"}の報告です。`);
     }
-    for (const fact of factNotes.slice(0, factCount)) {
+    for (const fact of middle.slice(0, factCount)) {
       shrinkable.push(lines.length);
       lines.push(`・${fact}`);
     }

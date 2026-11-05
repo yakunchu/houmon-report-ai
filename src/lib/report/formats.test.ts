@@ -435,7 +435,7 @@ describe("連絡事項（contactNotes）を渡したときのメール・チャ�
   it("チャット（ケアマネ宛て）: 【お願い】は 1 件目、事実の行は 2 件目以降。200 字以内", () => {
     const text = buildChat(argsOf("yamamoto", { contactNotes: care }));
     const lines = text.split("\n");
-    expect(lines[0]).toContain("11/5 訪問の報告です。");
+    expect(lines[0]).toBe(`${care[2]}（11/5 訪問）`);
     expect(lines).toContain(`・${care[1]}`);
     expect(lines).toContain(`【お願い】${care[0]}`);
     expect(Array.from(text.replace(/\n/g, "")).length).toBeLessThanOrEqual(CHAT_MAX_CHARS);
@@ -450,13 +450,13 @@ describe("連絡事項（contactNotes）を渡したときのメール・チャ�
     expect(Array.from(huge.replace(/\n/g, "")).length).toBeLessThanOrEqual(CHAT_MAX_CHARS);
   });
 
-  it("チャット（その他宛て）: 1 件目が依頼文でなければ【お願い】は付けず、すべて「・」の事実の行にする", () => {
+  it("チャット（その他宛て）: 1 件目が依頼文でなければ【お願い】は付けず、最後の事実を要点にして残りを「・」の行にする", () => {
     const facts = ["残薬4日分がある。", "朝の飲み忘れが週3回程度ある。"];
     const text = buildChat(argsOf("yamamoto", { recipientType: "その他", contactNotes: facts }));
     const lines = text.split("\n");
     expect(lines.some((l) => l.startsWith("【お願い】"))).toBe(false);
+    expect(lines[0]).toBe(`${facts[1]}（11/5 訪問）`);
     expect(lines).toContain(`・${facts[0]}`);
-    expect(lines).toContain(`・${facts[1]}`);
   });
 
   it("依頼文の判定（isRequestNote）", () => {
