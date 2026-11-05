@@ -19,3 +19,6 @@
 | 2026-11-04 09:46 | claude-sonnet-5-5 | medium | 13/13 (100%) | 2/2 | 8.3 | 1073/1262 | 宛先=ケアマネ fixture=yamamoto-hanako-kikikaeshi モデル比較: Sonnet 5.5 medium（聞き返し台本） |
 | 2026-11-04 10:16 | claude-opus-5-5 | low | 13/13 (100%) | 2/2 | 11.9 | 1021/1403 | 宛先=医療機関 fixture=sasaki-kiyoshi 3本目（医師宛・佐々木清さん）初回 |
 | 2026-11-04 10:28 | claude-opus-5-5 | low | 13/13 (100%) | 2/2 | 12.1 | 1021/1383 | 宛先=医療機関 fixture=sasaki-kiyoshi 服薬管理者の判定目安を追記（セットするのが家族→家族） |
+| 2026-11-05 17:26 | claude-opus-5-5 | low | 13/13 (100%) | 2/2 | 13.1 | 959/1255 | 宛先=ケアマネ fixture=yamamoto-hanako 提出前の最終評価 |
+| 2026-11-05 17:26 | claude-opus-5-5 | low | 13/13 (100%) | 2/2 | 10.9 | 1073/1348 | 宛先=ケアマネ fixture=yamamoto-hanako-kikikaeshi 提出前の最終評価 |
+| 2026-11-05 17:27 | claude-opus-5-5 | low | 13/13 (100%) | 2/2 | 12.0 | 1021/1411 | 宛先=医療機関 fixture=sasaki-kiyoshi 提出前の最終評価 |
