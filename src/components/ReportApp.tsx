@@ -11,7 +11,7 @@
  */
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { appendTranscript } from "@/lib/ui/paste";
-import { parseTranscriptFragment } from "@/lib/ui/shortcut";
+import { parseTranscriptFragment, parseTranscriptQuery } from "@/lib/ui/shortcut";
 import {
   createEmptyPatient,
   createEmptyStore,
@@ -189,10 +189,15 @@ function ReportAppInner() {
   const [notice, setNotice] = useState<string | null>(null);
   // iPhone のショートカットから戻ったとき、URL の #t= に文字起こしが載っている（# より後ろはサーバーに届かない）。
   // この画面はハイドレーション後にだけ描画されるので、初期値で window を読んでよい
-  const [shortcutImported, setShortcutImported] = useState<boolean>(() => parseTranscriptFragment(window.location.hash) !== null);
+  // "fragment" = # の後ろで届いた（サーバーに届かない）。"query" = ?result= で届いた（サーバーにも送られている。実機確認用に受けるだけ）
+  const [shortcutImported, setShortcutImported] = useState<"fragment" | "query" | null>(() => {
+    if (parseTranscriptFragment(window.location.hash) !== null) return "fragment";
+    if (parseTranscriptQuery(window.location.search) !== null) return "query";
+    return null;
+  });
   const [transcript, setTranscript] = useState<string>(() => {
     const saved = loadTranscript();
-    const fromShortcut = parseTranscriptFragment(window.location.hash);
+    const fromShortcut = parseTranscriptFragment(window.location.hash) ?? parseTranscriptQuery(window.location.search);
     return fromShortcut === null ? saved : appendTranscript(saved, fromShortcut);
   });
   const [session, setSession] = useState<DraftSession | null>(loadSession);
@@ -225,7 +230,8 @@ function ReportAppInner() {
   // ショートカットの文字起こしを取り込んだら、すぐ URL から消し（再読み込みで二重に入らない）、②へ移る
   useEffect(() => {
     if (!shortcutImported) return;
-    window.history.replaceState(null, "", window.location.pathname + window.location.search);
+    // ?result= で届いたときはクエリごと消す（履歴にも残さない）
+    window.history.replaceState(null, "", window.location.pathname + (shortcutImported === "query" ? "" : window.location.search));
     scrollToId("step-2");
   }, [shortcutImported]);
 
@@ -235,7 +241,7 @@ function ReportAppInner() {
       const text = parseTranscriptFragment(window.location.hash);
       if (text === null) return;
       setTranscript((prev) => appendTranscript(prev, text));
-      setShortcutImported(true);
+      setShortcutImported("fragment");
       window.history.replaceState(null, "", window.location.pathname + window.location.search);
       scrollToId("step-2");
     };
@@ -838,9 +844,15 @@ function ReportAppInner() {
             }
           />
           {shortcutImported && !maskState ? (
-            <p className="rounded-xl border-2 border-ai bg-shiroai p-3 text-lg font-bold text-ink" role="status">
-              ショートカットの文字起こしを②の会話欄に入れました。内容を確かめてから「マスクして確認」へ進んでください。
-            </p>
+            shortcutImported === "fragment" ? (
+              <p className="rounded-xl border-2 border-ai bg-shiroai p-3 text-lg font-bold text-ink" role="status">
+                ショートカットの文字起こしを②の会話欄に入れました（URL の # の後ろで受け取り。サーバーには届いていません）。内容を確かめてから「マスクして確認」へ進んでください。
+              </p>
+            ) : (
+              <WarnText>
+                ショートカットの文字起こしを②の会話欄に入れましたが、URL のクエリ（?result=）で届いたため、この文字はこのアプリのサーバーにも送られています。この形になる場合はこの方式を使わないので、この表示が出たことを開発側に伝えてください。
+              </WarnText>
+            )
           ) : null}
           <TranscriptSection
             transcript={transcript}
