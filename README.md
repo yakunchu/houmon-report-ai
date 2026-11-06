@@ -12,6 +12,37 @@
 - **誰のために**: 在宅訪問をする薬局の薬剤師。訪問先ではスマホ、薬局ではパソコンで使う。
 - **なぜ**: 報告書は 1 枚の作成〜送信に約 15 分かかり、訪問のたびに積み上がる。これを数分にして、薬剤師の時間を患者さんと向き合う仕事に戻す。ただし AI は**下書きまで**。確認・修正・確定は必ず薬剤師が行い、医療上の判断や助言はしない。
 
+## 画面で見る使い方（すべて架空データ）
+
+iPhone 13 相当の幅で撮った実際の画面です。登場する患者・医療機関・事業所は架空（`fixtures/`）。原寸は `docs/screenshots/`。
+
+| ① 患者を選ぶ | ② 会話を貼ってマスク | ③ 下書きを確認 | ④ 送り方を選んで出力 |
+|---|---|---|---|
+| <img src="docs/screenshots/01-patient-list.png" width="200" alt="①患者: 患者リストで山本 花子（架空）が選択中。いま作業中の患者の表示"> | <img src="docs/screenshots/03-masked.png" width="200" alt="②会話: AIに送る内容（マスク後）。氏名が【患者A】に置き換わり下線つきで強調"> | <img src="docs/screenshots/04-draft-choices.png" width="200" alt="③下書き: 選択式の欄（服薬管理者）に ✓ 本人、要確認の選択肢"> | <img src="docs/screenshots/09-output-formats.png" width="200" alt="④出力: 送り方を選ぶ（報告書ソフト用／印刷・FAX／メール／チャット）"> |
+| 患者リストから選ぶと基本情報が入る。初めての人は「＋ 新しい患者」。 | 氏名は端末の中で【患者A】に置き換え、対応表は画面の中だけ。AI には送らない。 | 報告書ソフトと同じ並びの選択式。会話に根拠がない欄は「要確認」のまま。 | 報告書ソフト用／印刷・FAX／メール／チャットの 4 つ。どれも端末の中で名前を戻す。 |
+
+| 推測しない | 本人の言葉をそのまま | 連絡事項は宛先で変わる | 確定の前に要確認を数える |
+|---|---|---|---|
+| <img src="docs/screenshots/05-draft-unsure.png" width="200" alt="残薬 2件目 センノシド錠 残数 要確認（残数）のバッジ"> | <img src="docs/screenshots/06-draft-soap.png" width="200" alt="指導内容（SOAP）の S に本人の言葉の引用"> | <img src="docs/screenshots/07-draft-contact-notes.png" width="200" alt="連絡事項（宛先向け・1〜3件）ケアマネ宛はお願いが先"> | <img src="docs/screenshots/08-confirm.png" width="200" alt="④出力: 「要確認」のままの欄が 1 件あります → このまま確定"> |
+| 会話に残数が出てこないセンノシド錠は「要確認（残数）」。空欄を推測で埋めない。 | S は本人の言葉の引用。各欄に「根拠を見る」で会話の該当箇所が付く。 | ケアマネ宛はお願いと医師に提案した事実、医師宛は処方提案が 1 件目（下の画像）。 | 要確認が残っていれば件数と欄を示してから確定。確定も薬剤師が押す。 |
+
+| 印刷・FAX のプレビュー | チャット用（200 字以内） | メール用 | 新しい患者は会話から基本情報 |
+|---|---|---|---|
+| <img src="docs/screenshots/11-output-print-preview.png" width="200" alt="印刷・FAX: 連絡事項の枠と服薬管理の表"> | <img src="docs/screenshots/13-output-chat.png" width="200" alt="チャット用: 要点 1 行＋事実＋【お願い】＋署名。患者名なし"> | <img src="docs/screenshots/14-output-email.png" width="200" alt="メール用: 件名と本文をコピー／メールアプリで開く"> | <img src="docs/screenshots/16-new-patient-suggestions.png" width="200" alt="会話から読み取った基本情報: 訪問頻度 2週間毎、服薬管理者 家族 に AI の提案バッジ"> |
+| A4 1 枚（処方内容は別紙）。連絡事項を枠で別立て。「急ぎ・急変は電話で。」 | 1 行目が要点、【お願い】、署名。既定で患者名を入れない。 | 件名・本文をコピーするか、メールアプリで開く。長い本文は注意が出る。 | 氏名などの基本だけで会話を取り込むと、訪問頻度・服薬管理者などが提案として入る。根拠のない項目は提案に含めない。 |
+
+医師宛の連絡事項（1 件目が処方の提案になる）と、印刷・FAX 用の A4:
+
+| 医師宛の連絡事項 | 印刷・FAX 用の A4（本紙＋別紙） |
+|---|---|
+| <img src="docs/screenshots/17-contact-notes-doctor.png" width="200" alt="医師宛: 連絡事項の 1 件目が薬の量や時刻のご検討のお願い"> | <img src="docs/screenshots/21-print-a4.png" width="620" alt="居宅療養管理指導報告書の A4: 宛名・報告日・発信元・送信票・患者訪問の表・連絡事項の枠・服薬管理と生活状況の 2 列表・SOAP・定型欄・別紙 処方内容"> |
+
+パソコンでも同じ画面（薬局では PC、訪問先では iPhone）:
+
+<img src="docs/screenshots/30-pc-home.png" width="640" alt="PC の画面: ①患者。患者リストで山本 花子（架空）が選択中">
+
+画面の撮り方は `scripts/screenshots.mjs`（Playwright で架空サンプルを流し、iPhone 13 相当の幅で撮る。下書きの API を 2 回呼ぶ。Playwright は devDependencies に入れていないので、使うときだけ `npm i -D playwright@1.61 && npx playwright install chromium`）。
+
 ## 構成
 
 ```mermaid
