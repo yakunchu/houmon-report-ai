@@ -10,6 +10,8 @@
  * 患者を選ぶと作業用コピーに読み込み、「患者リストに保存」で書き戻す。
  */
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
+import { appendTranscript } from "@/lib/ui/paste";
+import { parseTranscriptFragment } from "@/lib/ui/shortcut";
 import {
   createEmptyPatient,
   createEmptyStore,
@@ -185,7 +187,14 @@ function ReportAppInner() {
   const [basicOpen, setBasicOpen] = useState(() => !isBasicFilled(init.basic));
   const [aiFields, setAiFields] = useState<AiField[]>([]);
   const [notice, setNotice] = useState<string | null>(null);
-  const [transcript, setTranscript] = useState<string>(loadTranscript);
+  // iPhone のショートカットから戻ったとき、URL の #t= に文字起こしが載っている（# より後ろはサーバーに届かない）。
+  // この画面はハイドレーション後にだけ描画されるので、初期値で window を読んでよい
+  const [shortcutImported, setShortcutImported] = useState<boolean>(() => parseTranscriptFragment(window.location.hash) !== null);
+  const [transcript, setTranscript] = useState<string>(() => {
+    const saved = loadTranscript();
+    const fromShortcut = parseTranscriptFragment(window.location.hash);
+    return fromShortcut === null ? saved : appendTranscript(saved, fromShortcut);
+  });
   const [session, setSession] = useState<DraftSession | null>(loadSession);
   // result は会話と文脈欄の両方で置き換えた記号をまとめたもの。context は AI に送る文脈（マスク済み）
   const [maskState, setMaskState] = useState<MaskState | null>(null);
@@ -212,6 +221,27 @@ function ReportAppInner() {
   useEffect(() => saveRaw("workbase", JSON.stringify(base)), [base]);
   useEffect(() => saveRaw("transcript", transcript), [transcript]);
   useEffect(() => saveRaw("session", session ? JSON.stringify(session) : null), [session]);
+
+  // ショートカットの文字起こしを取り込んだら、すぐ URL から消し（再読み込みで二重に入らない）、②へ移る
+  useEffect(() => {
+    if (!shortcutImported) return;
+    window.history.replaceState(null, "", window.location.pathname + window.location.search);
+    scrollToId("step-2");
+  }, [shortcutImported]);
+
+  // 画面を開いたまま同じタブに戻ってきたときは、ページが読み直されず # だけ変わるので、hashchange で受ける
+  useEffect(() => {
+    const onHashChange = () => {
+      const text = parseTranscriptFragment(window.location.hash);
+      if (text === null) return;
+      setTranscript((prev) => appendTranscript(prev, text));
+      setShortcutImported(true);
+      window.history.replaceState(null, "", window.location.pathname + window.location.search);
+      scrollToId("step-2");
+    };
+    window.addEventListener("hashchange", onHashChange);
+    return () => window.removeEventListener("hashchange", onHashChange);
+  }, []);
   // 患者リスト。読み込んだだけのときは書き戻さない（読めなかったデータを空で上書きしないため）
   useEffect(() => {
     if (store !== init.store || init.migrated) saveStore(store);
@@ -807,6 +837,11 @@ function ReportAppInner() {
               </>
             }
           />
+          {shortcutImported && !maskState ? (
+            <p className="rounded-xl border-2 border-ai bg-shiroai p-3 text-lg font-bold text-ink" role="status">
+              ショートカットの文字起こしを②の会話欄に入れました。内容を確かめてから「マスクして確認」へ進んでください。
+            </p>
+          ) : null}
           <TranscriptSection
             transcript={transcript}
             onTranscriptChange={setTranscript}

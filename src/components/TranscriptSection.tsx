@@ -7,6 +7,7 @@ import { describeServer } from "@/lib/ui/health";
 import { appendTranscript } from "@/lib/ui/paste";
 import { DraftErrorPanel, type DraftErrorInfo } from "./DraftErrorPanel";
 import { PasteButton } from "./PasteButton";
+import { ShortcutRecordButton } from "./ShortcutRecordButton";
 import { Button, Section, WarnText, inputClass } from "./ui";
 
 function escapeRegExp(s: string): string {
@@ -144,6 +145,7 @@ export function TranscriptSection({
       </label>
       <div className="mt-3 flex flex-wrap items-center gap-3">
         <PasteButton onPaste={(text) => onTranscriptChange(appendTranscript(transcript, text))} disabled={drafting} />
+        <ShortcutRecordButton disabled={drafting} />
         <Button variant="primary" onClick={onMask} disabled={transcript.trim() === "" || drafting}>
           マスクして確認
         </Button>
