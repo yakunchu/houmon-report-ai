@@ -1,30 +1,14 @@
 import { describe, expect, it } from "vitest";
-import {
-  parseTranscriptFragment,
-  parseTranscriptQuery,
-  shortcutCallbackUrl,
-  shortcutRunUrl,
-  supportsShortcuts,
-  SHORTCUT_NAME,
-} from "./shortcut";
+import { parseTranscriptFragment, parseTranscriptQuery, shortcutRunUrl, supportsShortcuts, SHORTCUT_NAME } from "./shortcut";
 
 describe("shortcutRunUrl（Apple の run-shortcut の書式）", () => {
   it("名前を URL エンコードして shortcuts://run-shortcut?name= に付ける", () => {
     expect(shortcutRunUrl()).toBe(`shortcuts://run-shortcut?name=${encodeURIComponent(SHORTCUT_NAME)}`);
     expect(shortcutRunUrl("Lookup Goetta")).toBe("shortcuts://run-shortcut?name=Lookup%20Goetta");
   });
-});
-
-describe("shortcutCallbackUrl（x-callback-url で戻り先を渡す）", () => {
-  it("x-success はアプリの /#t=、x-cancel はトップ。どちらも URL エンコードされる", () => {
-    const url = shortcutCallbackUrl("https://192.168.1.5:3000/");
-    expect(url.startsWith("shortcuts://x-callback-url/run-shortcut?")).toBe(true);
-    const params = new URLSearchParams(url.slice(url.indexOf("?") + 1));
-    expect(params.get("name")).toBe(SHORTCUT_NAME);
-    expect(params.get("x-success")).toBe("https://192.168.1.5:3000/#t=");
-    expect(params.get("x-cancel")).toBe("https://192.168.1.5:3000/");
-    // # はそのままでは別の意味になるので、必ずエンコードされている
-    expect(url.includes("#")).toBe(false);
+  it("x-callback-url は使わない（戻り先を渡さない。2026-11-06 の実機テストで result がクエリに付いたため）", () => {
+    expect(shortcutRunUrl()).not.toContain("x-callback-url");
+    expect(shortcutRunUrl()).not.toContain("x-success");
   });
 });
 
@@ -56,7 +40,7 @@ describe("parseTranscriptFragment（# の後ろから文字起こしを取り出
   });
 });
 
-describe("parseTranscriptQuery（?result= で届いた場合）", () => {
+describe("parseTranscriptQuery（?result= で届いた場合の検知。取り込みには使わない）", () => {
   it("result を読む。他のクエリは無視", () => {
     expect(parseTranscriptQuery("?result=%E3%81%82%0A%E3%81%84")).toBe("あ\nい");
     expect(parseTranscriptQuery("?a=1&result=%E3%81%82")).toBe("あ");

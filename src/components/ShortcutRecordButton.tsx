@@ -1,13 +1,13 @@
 "use client";
 /**
  * 「録音して文字起こし（ショートカット）」ボタン。
- * iPhone の「ショートカット」App に入れた「在宅レポ録音」を、Apple 公式の x-callback-url で起動する。
- * 戻り先（x-success）にこのアプリの URL の #t= を渡すので、ショートカット側は「録音 → 文字起こし → クリップボードにコピー」の
- * 3 つだけでよく、文字出力は iOS が result= として付けて戻してくる（ReportApp が受け取って会話欄に入れる）。
+ * iPhone の「ショートカット」App に入れた「在宅レポ録音」を、Apple 公式の shortcuts://run-shortcut で起動する。
+ * 文字起こしは、ショートカットの最後の「URL を開く」がこのアプリの「#t=…」を開くことで届く（ReportApp が受け取って会話欄に入れる）。
+ * x-callback-url は使わない（2026-11-06 の実機テストで result がクエリに付き、サーバーに届いたため。src/lib/ui/shortcut.ts）。
  * ショートカット App が無い端末（Windows・Android）では表示しない。入っていない iPhone では押しても何も起きない。
  */
 import { useSyncExternalStore } from "react";
-import { SHORTCUT_NAME, shortcutCallbackUrl, shortcutRunUrl, supportsShortcuts } from "@/lib/ui/shortcut";
+import { SHORTCUT_NAME, shortcutRunUrl, supportsShortcuts } from "@/lib/ui/shortcut";
 
 const linkClass =
   "inline-flex min-h-12 items-center justify-center gap-2 rounded-xl border-2 border-ink-muted bg-raised px-5 py-2 text-lg font-bold text-ink no-underline hover:bg-surface focus-visible:outline-4 focus-visible:outline-offset-2 focus-visible:outline-hanada";
@@ -27,9 +27,8 @@ export function ShortcutRecordButton({ disabled = false }: { disabled?: boolean 
       </span>
     );
   }
-  const href = typeof window === "undefined" ? shortcutRunUrl(SHORTCUT_NAME) : shortcutCallbackUrl(window.location.origin, SHORTCUT_NAME);
   return (
-    <a href={href} className={linkClass} title={`ショートカット「${SHORTCUT_NAME}」を起動します`}>
+    <a href={shortcutRunUrl(SHORTCUT_NAME)} className={linkClass} title={`ショートカット「${SHORTCUT_NAME}」を起動します`}>
       録音して文字起こし（ショートカット）
     </a>
   );

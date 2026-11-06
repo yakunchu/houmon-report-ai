@@ -110,6 +110,21 @@ function scrollToId(id: string): void {
   window.setTimeout(() => document.getElementById(id)?.scrollIntoView({ behavior: "smooth", block: "start" }), 50);
 }
 
+/**
+ * 読み込み直後に出す知らせの帯へ移る。Web フォントの読み込みで上の段の高さが変わると、合わせた位置がずれて帯が固定ナビの下に
+ * 隠れることがあるので、フォントがそろったあとに帯が見えていなければもう一度合わせる（見えていれば動かさない）
+ */
+function scrollToNoticeWhenSettled(id: string): void {
+  scrollToId(id);
+  document.fonts?.ready
+    .then(() => {
+      const top = document.getElementById(id)?.getBoundingClientRect().top;
+      if (top === undefined) return;
+      if (top < 72 || top > window.innerHeight / 2) scrollToId(id);
+    })
+    .catch(() => {});
+}
+
 /** 作業用コピーから、患者に持たない「今回の訪問」の値と端末の設定を取り出す。次回訪問日は患者ごとなので引き継がない */
 function visitOf(b: BasicInfo): VisitFields {
   return {
@@ -189,7 +204,7 @@ function ReportAppInner() {
   const [notice, setNotice] = useState<string | null>(null);
   // iPhone のショートカットから戻ったとき、URL の #t= に文字起こしが載っている（# より後ろはサーバーに届かない）。
   // この画面はハイドレーション後にだけ描画されるので、初期値で window を読んでよい
-  // "fragment" = # の後ろで届いた（サーバーに届かない）。"query" = ?result= で届いた（サーバーにも送られている。実機確認用に受けるだけ）
+  // "fragment" = # の後ろで届いた（取り込む）。"query" = x-callback の ?result= で届いた（サーバーにも送られているので取り込まず、警告だけ出す）
   const [shortcutImported, setShortcutImported] = useState<"fragment" | "query" | null>(() => {
     if (parseTranscriptFragment(window.location.hash) !== null) return "fragment";
     if (parseTranscriptQuery(window.location.search) !== null) return "query";
@@ -197,7 +212,7 @@ function ReportAppInner() {
   });
   const [transcript, setTranscript] = useState<string>(() => {
     const saved = loadTranscript();
-    const fromShortcut = parseTranscriptFragment(window.location.hash) ?? parseTranscriptQuery(window.location.search);
+    const fromShortcut = parseTranscriptFragment(window.location.hash);
     return fromShortcut === null ? saved : appendTranscript(saved, fromShortcut);
   });
   const [session, setSession] = useState<DraftSession | null>(loadSession);
@@ -227,12 +242,13 @@ function ReportAppInner() {
   useEffect(() => saveRaw("transcript", transcript), [transcript]);
   useEffect(() => saveRaw("session", session ? JSON.stringify(session) : null), [session]);
 
-  // ショートカットの文字起こしを取り込んだら、すぐ URL から消し（再読み込みで二重に入らない）、②へ移る
+  // ショートカットの文字起こしを受けたら、すぐ URL から消し（再読み込みで二重に入らない）、知らせの帯（②の直前）へ移る。
+  // ②の見出しへ移すと帯が画面の上に隠れて見えないので、帯そのものを画面の先頭に出す
   useEffect(() => {
     if (!shortcutImported) return;
     // ?result= で届いたときはクエリごと消す（履歴にも残さない）
     window.history.replaceState(null, "", window.location.pathname + (shortcutImported === "query" ? "" : window.location.search));
-    scrollToId("step-2");
+    scrollToNoticeWhenSettled("shortcut-import");
   }, [shortcutImported]);
 
   // 画面を開いたまま同じタブに戻ってきたときは、ページが読み直されず # だけ変わるので、hashchange で受ける
@@ -243,7 +259,7 @@ function ReportAppInner() {
       setTranscript((prev) => appendTranscript(prev, text));
       setShortcutImported("fragment");
       window.history.replaceState(null, "", window.location.pathname + window.location.search);
-      scrollToId("step-2");
+      scrollToNoticeWhenSettled("shortcut-import");
     };
     window.addEventListener("hashchange", onHashChange);
     return () => window.removeEventListener("hashchange", onHashChange);
@@ -844,15 +860,18 @@ function ReportAppInner() {
             }
           />
           {shortcutImported && !maskState ? (
-            shortcutImported === "fragment" ? (
-              <p className="rounded-xl border-2 border-ai bg-shiroai p-3 text-lg font-bold text-ink" role="status">
-                ショートカットの文字起こしを②の会話欄に入れました（URL の # の後ろで受け取り。サーバーには届いていません）。内容を確かめてから「マスクして確認」へ進んでください。
-              </p>
-            ) : (
-              <WarnText>
-                ショートカットの文字起こしを②の会話欄に入れましたが、URL のクエリ（?result=）で届いたため、この文字はこのアプリのサーバーにも送られています。この形になる場合はこの方式を使わないので、この表示が出たことを開発側に伝えてください。
-              </WarnText>
-            )
+            <div id="shortcut-import" className="scroll-mt-24">
+              {shortcutImported === "fragment" ? (
+                <p className="rounded-xl border-2 border-ai bg-shiroai p-3 text-lg font-bold text-ink" role="status">
+                  ショートカットの文字起こしを②の会話欄に入れました（URL の # の後ろで受け取り。サーバーには届いていません）。内容を確かめてから「マスクして確認」へ進んでください。
+                </p>
+              ) : (
+                <WarnText>
+                  ショートカットから、文字起こしが URL のクエリ（?result=）で届きました。この形は文字がこのアプリのサーバーにも送られるため、会話欄には入れていません。会話は「クリップボードから貼り付け」で入れてください。ショートカットの最後は「URL
+                  を開く」（このアプリの URL の #t=）にし、x-callback-url は使わないでください。
+                </WarnText>
+              )}
+            </div>
           ) : null}
           <TranscriptSection
             transcript={transcript}
