@@ -287,7 +287,7 @@ export function OutputSection({
         <div className="print:hidden">
           {stale ? (
             <WarnText>
-              この下書きは、今の会話・宛先・基本情報から作ったものではありません。確定できません。②で「マスクして確認」→「下書きを作り直す」を押してください。
+              この下書きは、今の会話・宛先・基本情報から作ったものではありません。確定できません。②で「個人名を見えないようマスク処理する」→「下書きを作り直す」を押してください。
             </WarnText>
           ) : null}
           {unsureLabels.length > 0 ? (

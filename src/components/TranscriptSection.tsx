@@ -1,4 +1,4 @@
-/** ② 会話入力 → マスクして確認 → 下書きを作る */
+/** ② 会話入力 → 個人名を見えないようマスク処理する → 下書きを作る */
 import type { ReactNode } from "react";
 import type { MaskResult, MaskToken } from "@/lib/mask/types";
 import type { DraftContext, HealthResponse } from "@/lib/report/schema";
@@ -121,6 +121,7 @@ export function TranscriptSection({
   return (
     <Section id="step-2" title="② 会話">
       {!online ? <WarnText>オフラインです。Wi-Fi をご確認ください。つながるまで、下書きは作れません。</WarnText> : null}
+      <ShortcutRecordButton disabled={drafting} />
       <details className="mb-3 rounded-xl border-2 border-line bg-surface p-3 text-ink">
         <summary className="flex min-h-12 cursor-pointer items-center text-lg font-bold">会話の入れ方（ボイスメモの文字起こし・音声入力）</summary>
         <ul className="mt-2 list-disc space-y-1 pl-6">
@@ -145,14 +146,13 @@ export function TranscriptSection({
       </label>
       <div className="mt-3 flex flex-wrap items-center gap-3">
         <PasteButton onPaste={(text) => onTranscriptChange(appendTranscript(transcript, text))} disabled={drafting} />
-        <ShortcutRecordButton disabled={drafting} />
-        <Button variant="primary" onClick={onMask} disabled={transcript.trim() === "" || drafting}>
-          マスクして確認
+        <Button variant="primary" className="w-full" onClick={onMask} disabled={transcript.trim() === "" || drafting}>
+          個人名を見えないようマスク処理する
         </Button>
       </div>
 
       {maskResult && maskStale ? (
-        <WarnText>会話または基本情報が変わりました。もう一度「マスクして確認」を押してください。</WarnText>
+        <WarnText>会話または基本情報が変わりました。もう一度「個人名を見えないようマスク処理する」を押してください。</WarnText>
       ) : null}
 
       {maskResult ? (

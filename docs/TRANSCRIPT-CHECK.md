@@ -62,7 +62,7 @@ x-callback-url（アプリが戻り先を渡し、iOS が文字出力を `result
 
 ## 5. A 案のアプリ側（2026-11-06 実装。同日夜に x-callback-url をやめて run-shortcut に戻す）
 
-- ②会話の「録音して文字起こし（ショートカット）」ボタン（iPhone・iPad・Mac のときだけ表示。`src/components/ShortcutRecordButton.tsx`）。リンク先は Apple 公式の `shortcuts://run-shortcut?name=在宅レポ録音`（`src/lib/ui/shortcut.ts`）。戻り先は渡さない。
+- ②会話の先頭の大きな「録音して文字起こし」ボタン（花田色。2026-11-07 に社長の指示で上部へ移し「（ショートカット）」の表記を外した。iPhone・iPad・Mac のときだけ表示。`src/components/ShortcutRecordButton.tsx`）。リンク先は Apple 公式の `shortcuts://run-shortcut?name=在宅レポ録音`（`src/lib/ui/shortcut.ts`）。戻り先は渡さない。
 - 文字起こしは、ショートカットの最後の「URL を開く」が開くアプリの URL の `#` の後ろ（`#t=<URL エンコードした文字起こし>`）から読み、会話欄に足してすぐ URL から消す（`ReportApp.tsx` の起動時と hashchange）。`#` の後ろはブラウザがサーバーに送らないので、生の会話が PC のサーバーに届かない。再読み込みしても二重には入らない。取り込んだら青い帯で知らせ、帯が画面の先頭に来るようにスクロールする。
 - x-callback-url の `?result=` で届いた場合は取り込まず、赤い警告（最後を「URL を開く」にして x-callback-url は使わない旨）を出して URL からクエリを消す。
 - ショートカットが無い端末では、ボタンを押しても何も起きないだけで、他は変わらない。Windows・Android ではボタン自体を出さない。

@@ -136,7 +136,7 @@ async function main() {
     await p.getByRole("button", { name: new RegExp(`サンプル${which}.*を読み込む`) }).first().click();
     await wait(p, 1500);
     await goStep(p, 2);
-    await p.getByRole("button", { name: "マスクして確認" }).click();
+    await p.getByRole("button", { name: "個人名を見えないようマスク処理する" }).click();
     await p.getByText(/置き換えた記号（\d+件）/).waitFor({ timeout: 20000 });
   }
   async function makeDraft(p) {
@@ -209,7 +209,7 @@ async function main() {
     await scrollTo(page, page.getByRole("button", { name: "クリップボードから貼り付け" }), 340);
     await shot("09-transcript");
 
-    await page.getByRole("button", { name: "マスクして確認" }).click();
+    await page.getByRole("button", { name: "個人名を見えないようマスク処理する" }).click();
     const replaced = page.getByText(/置き換えた記号（\d+件）/);
     await replaced.waitFor({ timeout: 20000 });
     await scrollTo(page, page.locator("mark").first(), 260);

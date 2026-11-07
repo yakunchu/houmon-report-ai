@@ -307,7 +307,7 @@ export function DraftSection({ draft, onChange, transcript, onProceed, stale }: 
     <Section id="step-3" title="③ 下書き">
       {stale ? (
         <WarnText>
-          この下書きは、今の会話・宛先・基本情報から作ったものではありません（変更前の内容のままです）。②で「マスクして確認」→「下書きを作り直す」を押してください。それまで出力へは進めません。
+          この下書きは、今の会話・宛先・基本情報から作ったものではありません（変更前の内容のままです）。②で「個人名を見えないようマスク処理する」→「下書きを作り直す」を押してください。それまで出力へは進めません。
         </WarnText>
       ) : null}
       <p className="mb-4 rounded-xl bg-shiroai px-3 py-2 text-ink">
