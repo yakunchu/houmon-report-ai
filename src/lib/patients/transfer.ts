@@ -2,11 +2,12 @@
  * 患者リストの書き出し・読み込み（純関数）。サーバーは介さず、端末どうしでファイルをやり取りする。
  * ファイルには実名が含まれる。暗号化は今回は無し（HTTPS 対応後の候補）。
  */
-import { sanitizeGroup, sanitizePatient } from "./store";
+import { sanitizeFacility, sanitizeGroup, sanitizePatient } from "./store";
 import type {
   ExportFile,
   ExportFileNameFn,
   ExportStoreFn,
+  Facility,
   Group,
   ImportSummary,
   MergeStoresFn,
@@ -21,6 +22,7 @@ const MAX_TEXT_LENGTH = 10 * 1024 * 1024;
 /** 読み込める件数・長さの上限（超えたら拒否。確認画面の前に画面が固まるのを防ぐ） */
 export const MAX_PATIENTS = 5000;
 export const MAX_GROUPS = 500;
+export const MAX_FACILITIES = 500;
 /** 1 人あたりの familyMembers・otherMaskWords の件数 */
 export const MAX_LIST_ITEMS = 100;
 /** 文字列 1 つの長さ */
@@ -32,10 +34,11 @@ export const exportStore: ExportStoreFn = (store, exportedAt) => {
   const file: ExportFile = {
     app: "houmon-report-ai",
     kind: "patient-list",
-    version: 1,
+    version: 2,
     exportedAt,
     patients: store.patients,
     groups: store.groups,
+    facilities: store.facilities,
   };
   return JSON.stringify(file, null, 2);
 };
@@ -48,6 +51,7 @@ export const exportStore: ExportStoreFn = (store, exportedAt) => {
 export function exportForRelay(store: PatientStore, exportedAt: string, patientId?: string): string | null {
   let patients = store.patients;
   let groups = store.groups;
+  let facilities = store.facilities;
   if (patientId !== undefined) {
     const p = store.patients.find((x) => x.id === patientId);
     if (!p) return null;
@@ -55,14 +59,18 @@ export function exportForRelay(store: PatientStore, exportedAt: string, patientI
     groups = store.groups
       .filter((g) => p.groupIds.includes(g.id))
       .map((g) => ({ ...g, manualOrder: g.manualOrder.includes(p.id) ? [p.id] : [] }));
+    facilities = store.facilities
+      .filter((f) => f.id === p.residence.facilityId)
+      .map((f) => ({ ...f, manualOrder: f.manualOrder.includes(p.id) ? [p.id] : [] }));
   }
   const file: ExportFile = {
     app: "houmon-report-ai",
     kind: "patient-list",
-    version: 1,
+    version: 2,
     exportedAt,
     patients,
     groups,
+    facilities,
   };
   return JSON.stringify(file);
 }
@@ -103,7 +111,7 @@ export const parseExport: ParseExportFn = (text) => {
   if (!isObj(raw) || raw.app !== "houmon-report-ai" || raw.kind !== "patient-list") {
     return { ok: false, message: "このアプリの患者リストのファイルではありません" };
   }
-  if (raw.version !== 1) {
+  if (raw.version !== 1 && raw.version !== 2) {
     return { ok: false, message: `対応していない版です（version ${String(raw.version)}）` };
   }
   if (!Array.isArray(raw.patients) || !Array.isArray(raw.groups)) {
@@ -116,6 +124,11 @@ export const parseExport: ParseExportFn = (text) => {
   }
   if (raw.groups.length > MAX_GROUPS) {
     return { ok: false, message: `グループが多すぎます（${MAX_GROUPS.toLocaleString("en-US")} 件まで）` };
+  }
+  // 施設は version 2 から。無い・配列でないときは施設なしとして読む
+  const rawFacilities: unknown[] = Array.isArray(raw.facilities) ? raw.facilities : [];
+  if (rawFacilities.length > MAX_FACILITIES) {
+    return { ok: false, message: `施設が多すぎます（${MAX_FACILITIES.toLocaleString("en-US")} 件まで）` };
   }
 
   const warnings: string[] = [];
@@ -144,13 +157,37 @@ export const parseExport: ParseExportFn = (text) => {
   if (badGroups > 0) warnings.push(`グループ ${badGroups} 件を読み飛ばしました（名前か id がありません）`);
   if (dupGroups > 0) warnings.push(`グループ ${dupGroups} 件を読み飛ばしました（id が重複しています）`);
 
-  // 患者: id と氏名があり、id が重複しないものだけ残す（groupIds は読み込み側のグループにあるものだけ）
+  // 施設: id と名前があり、id が重複しないものだけ残す
+  const facilities: Facility[] = [];
+  const facilityIdSet = new Set<string>();
+  let badFacilities = 0;
+  let dupFacilities = 0;
+  for (const rf of rawFacilities) {
+    const f = sanitizeFacility(rf, groupIdSet);
+    if (f && (f.manualOrder.length > MAX_PATIENTS || hasLongString(f))) {
+      return { ok: false, message: "施設の内容が大きすぎます（並びの人数か文字数が上限を超えています）" };
+    }
+    if (!f || f.name.trim() === "") {
+      badFacilities++;
+      continue;
+    }
+    if (facilityIdSet.has(f.id)) {
+      dupFacilities++;
+      continue;
+    }
+    facilityIdSet.add(f.id);
+    facilities.push({ ...f, name: f.name.trim() });
+  }
+  if (badFacilities > 0) warnings.push(`施設 ${badFacilities} 件を読み飛ばしました（名前か id がありません）`);
+  if (dupFacilities > 0) warnings.push(`施設 ${dupFacilities} 件を読み飛ばしました（id が重複しています）`);
+
+  // 患者: id と氏名があり、id が重複しないものだけ残す（groupIds・facilityId は読み込み側にあるものだけ）
   const patients: Patient[] = [];
   const patientIdSet = new Set<string>();
   let badPatients = 0;
   let dupPatients = 0;
   for (const rp of raw.patients) {
-    const p = sanitizePatient(rp, groupIdSet);
+    const p = sanitizePatient(rp, groupIdSet, facilityIdSet);
     if (p && (p.familyMembers.length > MAX_LIST_ITEMS || p.otherMaskWords.length > MAX_LIST_ITEMS)) {
       return { ok: false, message: `患者 1 人あたりの家族・マスク語が多すぎます（${MAX_LIST_ITEMS} 件まで）` };
     }
@@ -174,13 +211,16 @@ export const parseExport: ParseExportFn = (text) => {
   // 手動並びは、ファイルにいる患者だけに絞る
   const fixedGroups = groups.map((g) => ({ ...g, manualOrder: g.manualOrder.filter((id) => patientIdSet.has(id)) }));
 
+  const fixedFacilities = facilities.map((f) => ({ ...f, manualOrder: f.manualOrder.filter((id) => patientIdSet.has(id)) }));
+
   const file: ExportFile = {
     app: "houmon-report-ai",
     kind: "patient-list",
-    version: 1,
+    version: 2,
     exportedAt: typeof raw.exportedAt === "string" ? raw.exportedAt : "",
     patients,
     groups: fixedGroups,
+    facilities: fixedFacilities,
   };
   return { ok: true, file, warnings };
 };
@@ -220,16 +260,32 @@ function unique(ids: string[]): string[] {
   return [...new Set(ids)];
 }
 
+/** 読み込む患者の住まいを、結果に存在する施設 id だけに絞る（個人宅は facilityId null） */
+function fixIncomingResidence(r: Patient["residence"], facilityIds: Set<string>): Patient["residence"] {
+  if (r.kind !== "facility") return { kind: "home", facilityId: null };
+  return { kind: "facility", facilityId: r.facilityId !== null && facilityIds.has(r.facilityId) ? r.facilityId : null };
+}
+
 function replaceStore(incoming: ExportFile): { store: PatientStore; summary: ImportSummary } {
   const groups = structuredClone(incoming.groups);
   const groupIds = new Set(groups.map((g) => g.id));
+  const facilities = structuredClone(incoming.facilities);
+  const facilityIds = new Set(facilities.map((f) => f.id));
   const patients = structuredClone(incoming.patients).map((p) => ({
     ...p,
     groupIds: unique(p.groupIds.filter((id) => groupIds.has(id))),
+    residence: fixIncomingResidence(p.residence, facilityIds),
   }));
   return {
-    store: { version: 1, patients, groups, selectedPatientId: null },
-    summary: { added: patients.length, updated: 0, unchanged: 0, groupsAdded: groups.length, warnings: [] },
+    store: { version: 2, patients, groups, facilities, homeSortMode: "kana", homeManualOrder: [], selectedPatientId: null },
+    summary: {
+      added: patients.length,
+      updated: 0,
+      unchanged: 0,
+      groupsAdded: groups.length,
+      facilitiesAdded: facilities.length,
+      warnings: [],
+    },
   };
 }
 
@@ -264,6 +320,42 @@ export const mergeStores: MergeStoresFn = (local, incoming, mode) => {
     groupsAdded++;
   }
 
+  // 施設: 名前（trim）で突き合わせ。無ければ追加（groupIds は付け替え）
+  const facilities: Facility[] = local.facilities.map((f) => ({ ...f, manualOrder: [...f.manualOrder] }));
+  const usedFacilityIds = new Set(facilities.map((f) => f.id));
+  const facilityByName = new Map<string, Facility>();
+  for (const f of facilities) {
+    const name = f.name.trim();
+    if (!facilityByName.has(name)) facilityByName.set(name, f);
+  }
+  const facilityIdMap = new Map<string, string>(); // 読み込み側の id → 結果の id
+  const incomingFacilityOrder = new Map<string, string[]>(); // 新しく追加した施設の id → 読み込み側の manualOrder
+  let facilitiesAdded = 0;
+  for (const inf of incoming.facilities) {
+    const name = inf.name.trim();
+    const hit = facilityByName.get(name);
+    if (hit) {
+      facilityIdMap.set(inf.id, hit.id);
+      continue;
+    }
+    const created: Facility = {
+      ...structuredClone(inf),
+      id: freshId(inf.id, usedFacilityIds),
+      name,
+      groupIds: unique(inf.groupIds.map((id) => groupIdMap.get(id)).filter((id): id is string => id !== undefined)),
+      manualOrder: [],
+    };
+    facilities.push(created);
+    facilityByName.set(name, created);
+    facilityIdMap.set(inf.id, created.id);
+    incomingFacilityOrder.set(created.id, inf.manualOrder);
+    facilitiesAdded++;
+  }
+  const mapResidence = (r: Patient["residence"]): Patient["residence"] =>
+    r.kind === "facility"
+      ? { kind: "facility", facilityId: r.facilityId !== null ? (facilityIdMap.get(r.facilityId) ?? null) : null }
+      : { kind: "home", facilityId: null };
+
   // 患者: 氏名 + 生年月日で突き合わせ
   const patients: Patient[] = local.patients.map((p) => structuredClone(p));
   const usedPatientIds = new Set(patients.map((p) => p.id));
@@ -287,7 +379,7 @@ export const mergeStores: MergeStoresFn = (local, incoming, mode) => {
 
     if (idx === undefined) {
       const id = freshId(ip.id, usedPatientIds);
-      patients.push({ ...structuredClone(ip), id, groupIds: mappedGroupIds });
+      patients.push({ ...structuredClone(ip), id, groupIds: mappedGroupIds, residence: mapResidence(ip.residence) });
       indexByKey.set(key, patients.length - 1);
       patientIdMap.set(ip.id, id);
       addedByImport.add(id);
@@ -302,7 +394,13 @@ export const mergeStores: MergeStoresFn = (local, incoming, mode) => {
     if (fromImport) duplicatesInFile++;
     if (isNewer(ip.updatedAt, existing.updatedAt)) {
       // 読み込み側が新しい: 内容は読み込み側、id と createdAt は端末側
-      patients[idx] = { ...structuredClone(ip), id: existing.id, createdAt: existing.createdAt, groupIds: mappedGroupIds };
+      patients[idx] = {
+        ...structuredClone(ip),
+        id: existing.id,
+        createdAt: existing.createdAt,
+        groupIds: mappedGroupIds,
+        residence: mapResidence(ip.residence),
+      };
       touched.add(existing.id);
       if (!fromImport) updated++;
     } else if (!fromImport) {
@@ -342,8 +440,43 @@ export const mergeStores: MergeStoresFn = (local, incoming, mode) => {
     return { ...g, manualOrder: unique(order) };
   });
 
+  // 施設の入居者の並び（グループと同じ考え方）
+  const membersByFacility = new Map<string, Set<string>>();
+  for (const p of patients) {
+    const fid = p.residence.kind === "facility" ? p.residence.facilityId : null;
+    if (fid === null) continue;
+    let set = membersByFacility.get(fid);
+    if (!set) {
+      set = new Set();
+      membersByFacility.set(fid, set);
+    }
+    set.add(p.id);
+  }
+  const finalFacilities = facilities.map((f) => {
+    const members = membersByFacility.get(f.id) ?? noMembers;
+    let order = f.manualOrder;
+    const fromIncoming = incomingFacilityOrder.get(f.id);
+    if (fromIncoming) {
+      order = fromIncoming.map((id) => patientIdMap.get(id)).filter((id): id is string => id !== undefined && members.has(id));
+    }
+    if (f.sortMode === "manual") {
+      const have = new Set(order);
+      const tail = [...members].filter((id) => touched.has(id) && !have.has(id));
+      order = [...order, ...tail];
+    }
+    return { ...f, manualOrder: unique(order) };
+  });
+
   return {
-    store: { version: 1, patients, groups: finalGroups, selectedPatientId: local.selectedPatientId },
-    summary: { added, updated, unchanged, groupsAdded, warnings },
+    store: {
+      version: 2,
+      patients,
+      groups: finalGroups,
+      facilities: finalFacilities,
+      homeSortMode: local.homeSortMode,
+      homeManualOrder: local.homeManualOrder,
+      selectedPatientId: local.selectedPatientId,
+    },
+    summary: { added, updated, unchanged, groupsAdded, facilitiesAdded, warnings },
   };
 };

@@ -3,7 +3,7 @@
  * 患者名などの実データが入るので、保存先はこの端末のブラウザだけ。サーバーには送らない。
  */
 import type { MaskToken } from "@/lib/mask/types";
-import { PATIENT_STORE_KEY, type Patient } from "@/lib/patients/types";
+import { PATIENT_STORE_KEY, type Patient, type Residence, type Weekday } from "@/lib/patients/types";
 import { RECIPIENT_TYPES, ReportDraftSchema, type RecipientType, type ReportDraft } from "@/lib/report/schema";
 import { fillMissingContactNotes } from "./draft-utils";
 import { EMPTY_BASIC, type BasicInfo } from "./types";
@@ -106,6 +106,7 @@ export function loadWorkBase(validGroupIds: ReadonlySet<string>): Patient | null
   // 氏名などの中身は作業コピー（basic）が持つので、ここでは土台の項目だけを使う
   return {
     ...EMPTY_PATIENT_BODY,
+    ...parseWorkExtras(s),
     id: s.id,
     groupIds,
     memo: typeof s.memo === "string" ? s.memo : "",
@@ -114,8 +115,27 @@ export function loadWorkBase(validGroupIds: ReadonlySet<string>): Patient | null
   };
 }
 
+/** 作業中の患者の住まい・訪問曜日・申し送り（患者カードで直接編集する 3 項目）。壊れた値は既定（個人宅・曜日なし・申し送りなし）に戻す */
+function parseWorkExtras(s: Record<string, unknown>): Pick<Patient, "residence" | "visitDays" | "handoverNote"> {
+  const r = s.residence;
+  let residence: Residence = { kind: "home", facilityId: null };
+  if (typeof r === "object" && r !== null) {
+    const o = r as Record<string, unknown>;
+    if (o.kind === "facility") {
+      residence = { kind: "facility", facilityId: typeof o.facilityId === "string" && o.facilityId !== "" ? o.facilityId : null };
+    }
+  }
+  const visitDays = Array.isArray(s.visitDays)
+    ? [...new Set(s.visitDays.filter((d): d is Weekday => typeof d === "number" && Number.isInteger(d) && d >= 0 && d <= 6))]
+    : [];
+  return { residence, visitDays, handoverNote: typeof s.handoverNote === "string" ? s.handoverNote : "" };
+}
+
 /** 土台の患者に入れておく空の中身（loadWorkBase 用） */
-const EMPTY_PATIENT_BODY: Omit<Patient, "id" | "groupIds" | "memo" | "createdAt" | "updatedAt"> = {
+const EMPTY_PATIENT_BODY: Omit<
+  Patient,
+  "id" | "groupIds" | "memo" | "createdAt" | "updatedAt" | "residence" | "visitDays" | "handoverNote"
+> = {
   familyName: "",
   givenName: "",
   familyNameKana: "",
@@ -168,4 +188,24 @@ export function loadSession(): DraftSession | null {
     model: typeof s.model === "string" ? s.model : "",
     sourceKey: typeof s.sourceKey === "string" ? s.sourceKey : "",
   };
+}
+
+/** 開いているタブ（①〜④）。ブラウザのタブを閉じるまで（sessionStorage）覚え、再読み込みで同じタブに戻る */
+const STEP_KEY = PREFIX + "step";
+
+export function loadStep(): 1 | 2 | 3 | 4 | null {
+  try {
+    const v = window.sessionStorage.getItem(STEP_KEY);
+    return v === "1" || v === "2" || v === "3" || v === "4" ? (Number(v) as 1 | 2 | 3 | 4) : null;
+  } catch {
+    return null;
+  }
+}
+
+export function saveStep(step: 1 | 2 | 3 | 4): void {
+  try {
+    window.sessionStorage.setItem(STEP_KEY, String(step));
+  } catch {
+    // 保存できなくても画面は動かす
+  }
 }

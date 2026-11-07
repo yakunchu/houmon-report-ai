@@ -8,7 +8,6 @@ import type { Group as PatientGroup, GroupId } from "@/lib/patients";
 import type { Patient } from "@/lib/patients/types";
 import { RECIPIENT_TYPES } from "@/lib/report/schema";
 import { MEDICATION_MANAGER, MANAGEMENT_METHOD } from "@/lib/report/schema";
-import { SAMPLES, type SampleId } from "@/lib/sample";
 import { isBasicFilled } from "@/lib/ui/basic-info";
 import { readClipboardText } from "@/lib/ui/clipboard";
 import {
@@ -48,9 +47,6 @@ export function BasicInfoSection({
   onChange,
   open,
   onToggle,
-  onLoadSample,
-  onClearSaved,
-  onClearEverything,
   top,
   groups,
   groupIds,
@@ -62,11 +58,6 @@ export function BasicInfoSection({
   onChange: (next: BasicInfo) => void;
   open: boolean;
   onToggle: () => void;
-  onLoadSample: (id: SampleId) => void;
-  /** 作業中の入力（基本情報・会話・下書き）を消す。患者リストは残す */
-  onClearSaved: () => void;
-  /** 患者リストも含めて、この端末の保存をすべて消す */
-  onClearEverything: () => void;
   /** 患者リスト（PatientPicker など）。見出しの下に置く */
   top: ReactNode;
   /** グループの一覧と、いまの患者が入っているグループ */
@@ -184,15 +175,7 @@ export function BasicInfoSection({
         <Button onClick={onToggle} aria-expanded={open} aria-controls="basic-body">
           {open ? "▲ 基本情報を閉じる" : "▼ 基本情報を開いて入力・修正する"}
         </Button>
-        {SAMPLES.map((s) => (
-          <Button key={s.id} onClick={() => onLoadSample(s.id)} title={s.description}>
-            {s.label}を読み込む
-          </Button>
-        ))}
       </div>
-      <p className="mt-2 text-base text-ink">
-        架空サンプル①は登録済みの患者の流れ（ケアマネ宛）、②は新しい患者の流れ（医師宛。会話から基本情報が自動入力されます）。
-      </p>
       {!open ? (
         <p className="mt-3 text-ink">
           {isBasicFilled(basic)
@@ -603,14 +586,6 @@ export function BasicInfoSection({
             </Field>
           </Group>
 
-          <div className="mt-6 flex flex-wrap gap-3">
-            <Button variant="danger" onClick={onClearSaved}>
-              作業中の入力（基本情報・会話・下書き）を消す
-            </Button>
-            <Button variant="danger" onClick={onClearEverything}>
-              患者リストも含めて、この端末の保存をすべて消す
-            </Button>
-          </div>
         </div>
       ) : null}
     </Section>

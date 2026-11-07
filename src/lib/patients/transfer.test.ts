@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
-import { createEmptyPatient, createEmptyStore } from "./store";
+import { createEmptyFacility, createEmptyPatient, createEmptyStore } from "./store";
 import { MAX_GROUPS, MAX_LIST_ITEMS, MAX_PATIENTS, MAX_STRING_LENGTH, exportFileName, exportStore, mergeStores, parseExport } from "./transfer";
-import type { ExportFile, Group, Patient, PatientStore } from "./types";
+import type { ExportFile, Facility, Group, Patient, PatientStore } from "./types";
 
 /* 架空データのみ */
 
@@ -31,8 +31,12 @@ function store(patients: Patient[], groups: Group[] = [], selectedPatientId: str
   return { ...createEmptyStore(), patients, groups, selectedPatientId };
 }
 
-function fileOf(patients: Patient[], groups: Group[] = []): ExportFile {
-  return { app: "houmon-report-ai", kind: "patient-list", version: 1, exportedAt: NEW, patients, groups };
+function facility(id: string, name: string, extra: Partial<Facility> = {}): Facility {
+  return { ...createEmptyFacility(), id, name, createdAt: OLD, updatedAt: OLD, ...extra };
+}
+
+function fileOf(patients: Patient[], groups: Group[] = [], facilities: Facility[] = []): ExportFile {
+  return { app: "houmon-report-ai", kind: "patient-list", version: 2, exportedAt: NEW, patients, groups, facilities };
 }
 
 /** ファイルの中身を直接組み立てる（parse のテスト用） */
@@ -44,7 +48,7 @@ describe("exportStore / exportFileName", () => {
   it("selectedPatientId を含めず、整形した JSON にする", () => {
     const text = exportStore(store([patient("p1", "山田", "太郎")], [], "p1"), NEW);
     const obj = JSON.parse(text);
-    expect(obj).toMatchObject({ app: "houmon-report-ai", kind: "patient-list", version: 1, exportedAt: NEW });
+    expect(obj).toMatchObject({ app: "houmon-report-ai", kind: "patient-list", version: 2, exportedAt: NEW, facilities: [] });
     expect(obj).not.toHaveProperty("selectedPatientId");
     expect(text).toContain("\n  ");
   });
@@ -88,8 +92,8 @@ describe("parseExport の拒否", () => {
     }
   });
 
-  it("version 2", () => {
-    expect(parseExport(rawText({ version: 2 }))).toEqual({ ok: false, message: "対応していない版です（version 2）" });
+  it("未知の version", () => {
+    expect(parseExport(rawText({ version: 3 }))).toEqual({ ok: false, message: "対応していない版です（version 3）" });
   });
 
   it("10 MB 超", () => {
@@ -189,7 +193,7 @@ describe("mergeStores（追加・更新）", () => {
     const incoming = fileOf([patient("q1", "鈴木", "次郎")]);
     const { store: next, summary } = mergeStores(local, incoming, "merge");
     expect(next.patients.map((p) => p.id)).toEqual(["p1", "q1"]);
-    expect(summary).toEqual({ added: 1, updated: 0, unchanged: 0, groupsAdded: 0, warnings: [] });
+    expect(summary).toEqual({ added: 1, updated: 0, unchanged: 0, groupsAdded: 0, facilitiesAdded: 0, warnings: [] });
     expect(next.selectedPatientId).toBe("p1");
     expect(JSON.stringify(local)).toBe(snapshot);
   });
@@ -318,9 +322,132 @@ describe("mergeStores（置き換え）", () => {
     expect(next.patients.map((p) => p.id)).toEqual(["q1"]);
     expect(next.groups.map((g) => g.id)).toEqual(["ig1"]);
     expect(next.selectedPatientId).toBeNull();
-    expect(summary).toEqual({ added: 1, updated: 0, unchanged: 0, groupsAdded: 1, warnings: [] });
+    expect(summary).toEqual({ added: 1, updated: 0, unchanged: 0, groupsAdded: 1, facilitiesAdded: 0, warnings: [] });
     // 元は変更されない
     expect(local.patients[0].id).toBe("p1");
     expect(local.selectedPatientId).toBe("p1");
+  });
+
+  it("施設も置き換え、個人宅の並びは五十音に戻す", () => {
+    const local = { ...store([patient("p1", "山田", "太郎")]), homeSortMode: "manual" as const, homeManualOrder: ["p1"] };
+    const incoming = fileOf(
+      [patient("q1", "鈴木", "次郎", { residence: { kind: "facility", facilityId: "if1" } })],
+      [],
+      [facility("if1", "ひまわり荘", { manualOrder: ["q1"] })],
+    );
+    const { store: next, summary } = mergeStores(local, incoming, "replace");
+    expect(next.version).toBe(2);
+    expect(next.facilities.map((f) => f.id)).toEqual(["if1"]);
+    expect(next.patients[0].residence).toEqual({ kind: "facility", facilityId: "if1" });
+    expect(next.homeSortMode).toBe("kana");
+    expect(next.homeManualOrder).toEqual([]);
+    expect(summary.facilitiesAdded).toBe(1);
+  });
+});
+
+describe("v1 ファイルの読み込み", () => {
+  it("施設・住まいが無い version 1 を v2 の形に補う", () => {
+    const v1Patient = { id: "p1", familyName: "山田", givenName: "太郎", visitDays: [1, 9, "x", 3, 3] };
+    const r = parseExport(rawText({ version: 1, patients: [v1Patient] }));
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    expect(r.file.version).toBe(2);
+    expect(r.file.facilities).toEqual([]);
+    expect(r.file.patients[0].residence).toEqual({ kind: "home", facilityId: null });
+    expect(r.file.patients[0].visitDays).toEqual([1, 3]); // 不正な曜日は捨てる
+    expect(r.file.patients[0].handoverNote).toBe("");
+  });
+
+  it("v1 の読み込みを merge しても落ちない", () => {
+    const r = parseExport(rawText({ version: 1, patients: [{ id: "p1", familyName: "山田", givenName: "太郎" }] }));
+    if (!r.ok) throw new Error("parse failed");
+    const { store: next, summary } = mergeStores(createEmptyStore(), r.file, "merge");
+    expect(next.patients).toHaveLength(1);
+    expect(summary).toMatchObject({ added: 1, facilitiesAdded: 0 });
+  });
+});
+
+describe("施設の書き出し・読み込み", () => {
+  it("export → parse で施設と住まいが戻る", () => {
+    const s = {
+      ...store([patient("p1", "山田", "太郎", { residence: { kind: "facility", facilityId: "f1" } })]),
+      facilities: [facility("f1", "ひまわり荘", { visitDays: [4], manualOrder: ["p1"] })],
+    };
+    const r = parseExport(exportStore(s, NEW));
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    expect(r.file.facilities).toEqual(s.facilities);
+    expect(r.file.patients[0].residence).toEqual({ kind: "facility", facilityId: "f1" });
+  });
+
+  it("存在しない施設を指す住まいは facilityId null、名前の無い施設は読み飛ばす", () => {
+    const r = parseExport(
+      rawText({
+        version: 2,
+        patients: [patient("p1", "山田", "太郎", { residence: { kind: "facility", facilityId: "gone" } })],
+        facilities: [facility("f1", " "), facility("f2", "あおぞら荘")],
+      }),
+    );
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    expect(r.file.facilities.map((f) => f.id)).toEqual(["f2"]);
+    expect(r.file.patients[0].residence).toEqual({ kind: "facility", facilityId: null });
+    expect(r.warnings).toContain("施設 1 件を読み飛ばしました（名前か id がありません）");
+  });
+});
+
+describe("mergeStores（施設）", () => {
+  it("名前で突き合わせ、入居者の facilityId を端末側の id に付け替える", () => {
+    const local = {
+      ...store([patient("p1", "山田", "太郎", { residence: { kind: "facility", facilityId: "lf1" } })]),
+      facilities: [facility("lf1", "ひまわり荘")],
+    };
+    const incoming = fileOf(
+      [
+        patient("q1", "鈴木", "次郎", { residence: { kind: "facility", facilityId: "if1" } }),
+        patient("q2", "高橋", "三郎", { residence: { kind: "facility", facilityId: "if2" } }),
+      ],
+      [],
+      [facility("if1", " ひまわり荘 "), facility("if2", "あおぞら荘")],
+    );
+    const { store: next, summary } = mergeStores(local, incoming, "merge");
+    expect(summary.facilitiesAdded).toBe(1);
+    expect(next.facilities.map((f) => f.name)).toEqual(["ひまわり荘", "あおぞら荘"]);
+    const suzuki = next.patients.find((p) => p.familyName === "鈴木")!;
+    expect(suzuki.residence).toEqual({ kind: "facility", facilityId: "lf1" });
+    const takahashi = next.patients.find((p) => p.familyName === "高橋")!;
+    expect(takahashi.residence).toEqual({ kind: "facility", facilityId: "if2" });
+  });
+
+  it("新しい施設の manualOrder を付け替える（患者の id が変わっても追従）", () => {
+    const local = store([patient("q1", "別人", "某", { birthDate: "1999-01-01" })]); // id q1 は端末側が使用済み
+    const incoming = fileOf(
+      [
+        patient("q1", "鈴木", "次郎", { residence: { kind: "facility", facilityId: "if1" } }),
+        patient("q2", "高橋", "三郎", { residence: { kind: "facility", facilityId: "if1" } }),
+      ],
+      [],
+      [facility("if1", "北荘", { sortMode: "manual", manualOrder: ["q2", "q1"] })],
+    );
+    const { store: next } = mergeStores(local, incoming, "merge");
+    const suzuki = next.patients.find((p) => p.familyName === "鈴木")!;
+    expect(suzuki.id).not.toBe("q1");
+    const north = next.facilities.find((f) => f.name === "北荘")!;
+    expect(north.sortMode).toBe("manual");
+    expect(north.manualOrder).toEqual(["q2", suzuki.id]);
+  });
+
+  it("端末側の個人宅の並びは保つ", () => {
+    const local = { ...store([patient("p1", "山田", "太郎")]), homeSortMode: "manual" as const, homeManualOrder: ["p1"] };
+    const { store: next } = mergeStores(local, fileOf([patient("q1", "鈴木", "次郎")]), "merge");
+    expect(next.homeSortMode).toBe("manual");
+    expect(next.homeManualOrder).toEqual(["p1"]);
+  });
+
+  it("施設のグループ参照は端末側の id に付け替える", () => {
+    const local = store([], [group("lg1", "東地区")]);
+    const incoming = fileOf([], [group("ig1", "東地区")], [facility("if1", "南荘", { groupIds: ["ig1"] })]);
+    const { store: next } = mergeStores(local, incoming, "merge");
+    expect(next.facilities[0].groupIds).toEqual(["lg1"]);
   });
 });

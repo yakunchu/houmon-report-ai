@@ -4,6 +4,7 @@
  * 正本は fixtures/ 側。台本を直すときは fixtures を直してからここへ写すこと。
  */
 import profile from "../../../fixtures/yamamoto-hanako/profile.json";
+import type { PatientExtras } from "@/lib/patients/types";
 import type { RecipientType } from "@/lib/report/schema";
 import { EMPTY_BASIC, type BasicInfo } from "@/lib/ui/types";
 
@@ -35,6 +36,13 @@ function slashDate(iso: string): string {
 const [familyName = "", givenName = ""] = profile.patient.name.split(/\s+/);
 
 const recipientType: RecipientType = "ケアマネ";
+
+/** 住まい・訪問曜日・申し送り（個人宅・水曜。架空） */
+export const YAMAMOTO_EXTRAS: PatientExtras = {
+  residence: { kind: "home", facilityId: null },
+  visitDays: [3],
+  handoverNote: profile.handoverNote,
+};
 
 /** 架空の基本情報（profile.json から組み立て） */
 export const YAMAMOTO_BASIC: BasicInfo = {

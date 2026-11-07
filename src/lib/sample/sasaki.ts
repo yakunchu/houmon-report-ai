@@ -5,6 +5,7 @@
  * 正本は fixtures/sasaki-kiyoshi/。台本を直すときは fixtures を直してからここへ写すこと。
  */
 import profile from "../../../fixtures/sasaki-kiyoshi/profile.json";
+import type { PatientExtras } from "@/lib/patients/types";
 import type { RecipientType } from "@/lib/report/schema";
 import { EMPTY_BASIC, type BasicInfo } from "@/lib/ui/types";
 
@@ -37,6 +38,16 @@ function slashDate(iso: string): string {
 const [familyName = "", givenName = ""] = profile.patient.name.split(/\s+/);
 
 const recipientType: RecipientType = "医療機関";
+
+/** 入居する施設の名前（架空）。読み込み側が同名の施設を探し、無ければ作って facilityId を入れる */
+export const SASAKI_FACILITY_NAME: string = profile.facilityName;
+
+/** 住まい・訪問曜日・申し送り（施設・木曜。facilityId は読み込み側で施設を作ってから入れる。架空） */
+export const SASAKI_EXTRAS: PatientExtras = {
+  residence: { kind: "facility", facilityId: null },
+  visitDays: [4],
+  handoverNote: profile.handoverNote,
+};
 
 /**
  * 新しい患者として登録する直前の状態（基本情報の一部だけ入っている）。

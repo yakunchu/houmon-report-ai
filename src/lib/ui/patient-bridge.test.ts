@@ -35,6 +35,9 @@ const base: Patient = {
   fixedFields: { counselingTarget: "本人", genericPreference: "希望", medicineNotebook: "シール貼付" },
   groupIds: ["g1"],
   memo: "メモ",
+  residence: { kind: "home", facilityId: null },
+  visitDays: [3],
+  handoverNote: "玄関の呼び鈴が鳴らない（架空）",
   createdAt: "2026-11-01T00:00:00.000Z",
   updatedAt: "2026-11-01T00:00:00.000Z",
 };

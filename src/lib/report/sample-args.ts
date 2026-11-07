@@ -30,6 +30,11 @@ type Profile = {
     concomitant: string;
   };
   fixedFields: FixedFields;
+  /** 画面 v2: 住まい・施設名・訪問曜日・申し送り（任意。架空） */
+  residence?: "home" | "facility";
+  facilityName?: string;
+  visitDays?: number[];
+  handoverNote?: string;
 };
 
 // expected.json には根拠（evidence）が無いので空で補う。

@@ -13,14 +13,18 @@ import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from "reac
 import { appendTranscript } from "@/lib/ui/paste";
 import { parseTranscriptFragment, parseTranscriptQuery } from "@/lib/ui/shortcut";
 import {
+  calcAge,
+  createEmptyFacility,
   createEmptyPatient,
   createEmptyStore,
   deletePatient,
   loadStore,
   saveStore,
+  upsertFacility,
   upsertPatient,
   type GroupId,
   type Patient,
+  type PatientExtras,
   type PatientId,
   type PatientStore,
 } from "@/lib/patients";
@@ -66,9 +70,11 @@ import {
   loadPharmacy,
   loadPharmacyContact,
   loadSession,
+  loadStep,
   loadTranscript,
   loadWorkBase,
   saveRaw,
+  saveStep,
   type DraftSession,
 } from "@/lib/ui/storage";
 import {
@@ -79,15 +85,16 @@ import {
   type SuggestionItem,
 } from "@/lib/ui/suggestions";
 import { type BasicInfo } from "@/lib/ui/types";
-import { WarnText } from "./ui";
+import { Section, WarnText } from "./ui";
 import { BasicInfoSection } from "./BasicInfoSection";
+import { BottomNav } from "./BottomNav";
 import { DraftSection } from "./DraftSection";
 import { makeDraftError, type DraftErrorInfo } from "./DraftErrorPanel";
 import { OutputSection } from "./OutputSection";
 import { CurrentPatientBar } from "./patients/CurrentPatientBar";
 import { PatientPicker } from "./patients/PatientPicker";
 import { SuggestionPanel } from "./patients/SuggestionPanel";
-import { StepBar, type StepStatus } from "./StepBar";
+import { StepBar, type StepNo, type StepStatus } from "./StepBar";
 import { TranscriptSection } from "./TranscriptSection";
 
 /** 画面が開かれたあと（ハイドレーション後）にだけ true になる。localStorage を安全に読むための門番 */
@@ -108,6 +115,21 @@ const DRAFT_TIMEOUT_MS = 180_000;
 
 function scrollToId(id: string): void {
   window.setTimeout(() => document.getElementById(id)?.scrollIntoView({ behavior: "smooth", block: "start" }), 50);
+}
+
+/** タブを切り替えたあとの位置合わせ。anchorId が見つかればそこへ、無ければタブの先頭（画面の一番上）へ。描画が済むのを少し待つ */
+function scrollAfterTabChange(anchorId?: string): void {
+  window.setTimeout(() => {
+    const el = anchorId ? document.getElementById(anchorId) : null;
+    if (el) el.scrollIntoView({ behavior: "smooth", block: "start" });
+    else window.scrollTo({ top: 0 });
+  }, 50);
+}
+
+/** URL の #step-2 のようなリンクから、開くタブを読む */
+function stepFromHash(hash: string): StepNo | null {
+  const m = /^#step-([1-4])$/.exec(hash);
+  return m ? (Number(m[1]) as StepNo) : null;
 }
 
 /**
@@ -137,8 +159,13 @@ function visitOf(b: BasicInfo): VisitFields {
 }
 
 /** マスク辞書・マスク入力の印・下書きの元の印（今の入力から計算する。変わったら結果は古い） */
-function computeKeys(b: BasicInfo, transcript: string) {
-  const dictionary = buildDictionary(b);
+function computeKeys(b: BasicInfo, transcript: string, facilityName: string) {
+  // 住まいが施設なら、その施設名を「その他マスクしたい語」と同じ扱いで置き換え対象に加える（AI に送る前）
+  const maskBasic: BasicInfo =
+    facilityName === ""
+      ? b
+      : { ...b, otherMaskWords: b.otherMaskWords.trim() === "" ? facilityName : `${b.otherMaskWords}、${facilityName}` };
+  const dictionary = buildDictionary(maskBasic);
   const maskKey = JSON.stringify([dictionary, transcript, buildContext(b)]);
   // 下書きの元は、マスク入力に宛先を足したもの（宛先で文面が変わるため）
   const draftSourceKey = fingerprint(`${maskKey}|${b.recipientType}`);
@@ -148,8 +175,8 @@ function computeKeys(b: BasicInfo, transcript: string) {
 type MaskState = { result: MaskResult; key: string; context: DraftContext };
 
 /** 会話と文脈欄の両方を同じ辞書でマスクする（result は両方で置き換えた記号をまとめたもの。context は AI に送る文脈） */
-function makeMaskState(b: BasicInfo, transcript: string): MaskState {
-  const { dictionary, maskKey } = computeKeys(b, transcript);
+function makeMaskState(b: BasicInfo, transcript: string, facilityName: string): MaskState {
+  const { dictionary, maskKey } = computeKeys(b, transcript, facilityName);
   const t = maskText(transcript, dictionary);
   // 家族構成・処方内容などの文脈欄にも同じ辞書でマスクを掛ける
   const c = maskContext(buildContext(b), dictionary);
@@ -199,7 +226,14 @@ function ReportAppInner() {
   // base: 作業中の患者の土台（id・グループ・メモ・作成日時）。患者リストに未登録の「新しい患者」でも持つ
   const [base, setBase] = useState<Patient>(init.base);
   const [basic, setBasic] = useState<BasicInfo>(init.basic);
-  const [basicOpen, setBasicOpen] = useState(() => !isBasicFilled(init.basic));
+  // 画面 v2: ①は入口（個人宅／施設）を先に見せるので、長い基本情報フォームは畳んで始める（「＋ 新しい患者」「この患者を編集」で開く）
+  const [basicOpen, setBasicOpen] = useState(false);
+  // いま開いているタブ（①〜④）。優先順: ショートカットの文字起こしが届いた(②) → URL の #step-N → このタブで最後に開いていたもの → ①。
+  // この画面はハイドレーション後にだけ描画されるので、初期値で window を読んでよい
+  const [activeStep, setActiveStep] = useState<StepNo>(() => {
+    if (parseTranscriptFragment(window.location.hash) !== null || parseTranscriptQuery(window.location.search) !== null) return 2;
+    return stepFromHash(window.location.hash) ?? loadStep() ?? 1;
+  });
   const [aiFields, setAiFields] = useState<AiField[]>([]);
   const [notice, setNotice] = useState<string | null>(null);
   // iPhone のショートカットから戻ったとき、URL の #t= に文字起こしが載っている（# より後ろはサーバーに届かない）。
@@ -241,6 +275,13 @@ function ReportAppInner() {
   useEffect(() => saveRaw("workbase", JSON.stringify(base)), [base]);
   useEffect(() => saveRaw("transcript", transcript), [transcript]);
   useEffect(() => saveRaw("session", session ? JSON.stringify(session) : null), [session]);
+  useEffect(() => saveStep(activeStep), [activeStep]);
+  // URL の #step-N は最初に読んだらすぐ消す（残すと、あとで別のタブへ進んで再読み込みしても #step-N に戻される）
+  useEffect(() => {
+    if (stepFromHash(window.location.hash) !== null) {
+      window.history.replaceState(null, "", window.location.pathname + window.location.search);
+    }
+  }, []);
 
   // ショートカットの文字起こしを受けたら、すぐ URL から消し（再読み込みで二重に入らない）、知らせの帯（②の直前）へ移る。
   // ②の見出しへ移すと帯が画面の上に隠れて見えないので、帯そのものを画面の先頭に出す
@@ -255,7 +296,16 @@ function ReportAppInner() {
   useEffect(() => {
     const onHashChange = () => {
       const text = parseTranscriptFragment(window.location.hash);
-      if (text === null) return;
+      if (text === null) {
+        // #step-2 のようなリンク: そのタブを開く
+        const step = stepFromHash(window.location.hash);
+        if (step !== null) {
+          setActiveStep(step);
+          scrollAfterTabChange();
+        }
+        return;
+      }
+      setActiveStep(2);
       setTranscript((prev) => appendTranscript(prev, text));
       setShortcutImported("fragment");
       window.history.replaceState(null, "", window.location.pathname + window.location.search);
@@ -277,7 +327,14 @@ function ReportAppInner() {
     return () => window.clearInterval(id);
   }, [drafting]);
 
-  const keys = useMemo(() => computeKeys(basic, transcript), [basic, transcript]);
+  // 住まいが施設のときの施設名（マスク対象に加える）
+  const facilityId = base.residence.kind === "facility" ? base.residence.facilityId : null;
+  const facilityName = useMemo(
+    () => (facilityId === null ? "" : (store.facilities.find((f) => f.id === facilityId)?.name.trim() ?? "")),
+    [store.facilities, facilityId],
+  );
+
+  const keys = useMemo(() => computeKeys(basic, transcript, facilityName), [basic, transcript, facilityName]);
   const { dictionary, maskKey, draftSourceKey } = keys;
   const maskStale = maskState !== null && maskState.key !== maskKey;
   const sessionStale = session !== null && session.sourceKey !== draftSourceKey;
@@ -299,14 +356,23 @@ function ReportAppInner() {
   const dirty = savedPatient === null || !isSamePatientContent(livePatient, savedPatient);
   const patientName = [basic.patientFamilyName, basic.patientGivenName].filter((s) => s.trim() !== "").join(" ");
 
+  /**
+   * タブを切り替える。anchorId を渡すと、切り替えたあとそのタブの中の該当の要素（id）へスクロールする。
+   * 省略するか要素が見つからなければ、画面の先頭へ戻す。
+   */
+  function goToStep(step: StepNo, anchorId?: string): void {
+    setActiveStep(step);
+    scrollAfterTabChange(anchorId);
+  }
+
   /** 基本情報の作業コピーを入れ替える。下書きの元の印も合わせて更新し、下書き自体は有効なまま残す（会話から入れた値など、下書きの由来が同じ変更用） */
   function commitBasicKeepingDraft(next: BasicInfo, addAi: AiField[]): void {
     setBasic(next);
     setAiFields((prev) => [...new Set([...prev, ...addAi])]);
     if (session && !sessionStale) {
-      setSession({ ...session, sourceKey: computeKeys(next, transcript).draftSourceKey });
+      setSession({ ...session, sourceKey: computeKeys(next, transcript, facilityName).draftSourceKey });
     }
-    if (maskState && !maskStale) setMaskState(makeMaskState(next, transcript));
+    if (maskState && !maskStale) setMaskState(makeMaskState(next, transcript, facilityName));
   }
 
   function handleBasicChange(next: BasicInfo): void {
@@ -317,7 +383,7 @@ function ReportAppInner() {
   }
 
   function handleMask(): void {
-    setMaskState(makeMaskState(basic, transcript));
+    setMaskState(makeMaskState(basic, transcript, facilityName));
     setAckNoPatient(false);
     setAckWarnings(false);
     setLeakWarning(false);
@@ -331,7 +397,7 @@ function ReportAppInner() {
     const next: BasicInfo = { ...basic, prescription: n.lines.join("\n") };
     setBasic(next);
     setNotice(null);
-    setMaskState(makeMaskState(next, transcript));
+    setMaskState(makeMaskState(next, transcript, facilityName));
     setAckNoPatient(false);
     setAckWarnings(false);
     setLeakWarning(false);
@@ -348,7 +414,7 @@ function ReportAppInner() {
         : { ...basic, otherMaskWords: basic.otherMaskWords.trim() === "" ? word : `${basic.otherMaskWords}、${word}` };
     setBasic(next);
     setNotice(null);
-    setMaskState(makeMaskState(next, transcript));
+    setMaskState(makeMaskState(next, transcript, facilityName));
     setAckNoPatient(false);
     setAckWarnings(false);
     setLeakWarning(false);
@@ -494,10 +560,10 @@ function ReportAppInner() {
       const { basic: filledBasic, filled } = autoFillBlanks(latest.basic, parsed.data);
       if (filled.length > 0) {
         filledAny = true;
-        sourceKey = computeKeys(filledBasic, transcript).draftSourceKey;
+        sourceKey = computeKeys(filledBasic, transcript, facilityName).draftSourceKey;
         setBasic(filledBasic);
         setAiFields((prev) => [...new Set([...prev, ...filled])]);
-        setMaskState(makeMaskState(filledBasic, transcript));
+        setMaskState(makeMaskState(filledBasic, transcript, facilityName));
         setNotice(null);
       }
     }
@@ -511,7 +577,7 @@ function ReportAppInner() {
     });
     setFinalizing(false);
     setConfirmed(false);
-    scrollToId(filledAny ? "suggestions" : "step-3");
+    goToStep(3, filledAny ? "suggestions" : undefined);
   }
 
   function updateDraft(next: ReportDraft): void {
@@ -573,19 +639,41 @@ function ReportAppInner() {
     if (!confirmLeave(!same)) return;
     beginPatient(target, { ...store, selectedPatientId: id }, same ? visitOf(basic) : visitForSwitch(), !same);
     setBasicOpen(false);
-    scrollToId("step-2");
+    // 選んだら①にとどまり、上の患者カード（申し送り・注意事項）を見せる。②へは「次へ」で進む
+    goToStep(1);
   }
 
-  function newPatient(): void {
+  /** 新しい患者（作業用コピーだけ。患者リストには「患者リストに保存」で登録）。preset で住まい・曜日・申し送りを最初から入れられる */
+  function newPatient(preset?: Partial<PatientExtras>): void {
     if (!confirmLeave(false)) return;
-    beginPatient(createEmptyPatient(), { ...store, selectedPatientId: null }, visitForSwitch(), false);
+    beginPatient({ ...createEmptyPatient(), ...preset }, { ...store, selectedPatientId: null }, visitForSwitch(), false);
     setBasicOpen(true);
-    scrollToId("basic-body");
+    goToStep(1, "basic-body");
   }
 
   function editPatient(): void {
     setBasicOpen(true);
-    scrollToId("basic-body");
+    goToStep(1, "basic-body");
+  }
+
+  /**
+   * 患者カードで直接編集した住まい・訪問曜日・申し送りを、作業用コピーに重ねる。
+   * 患者リストに登録済みなら、リストにも即保存する（基本情報の未保存の編集は巻き込まない）。未登録なら作業用コピーだけ。
+   */
+  function saveExtras(next: PatientExtras): void {
+    const nextBase: Patient = { ...base, residence: next.residence, visitDays: next.visitDays, handoverNote: next.handoverNote };
+    setBase(nextBase);
+    if (savedPatient) {
+      // 保存済みの記録に 3 項目だけ重ねる。作業用コピー側の未保存の編集（グループなど）はそのまま残る
+      setStore(
+        upsertPatient(store, {
+          ...savedPatient,
+          residence: next.residence,
+          visitDays: next.visitDays,
+          handoverNote: next.handoverNote,
+        }),
+      );
+    }
   }
 
   /** 作業コピーを患者リストに書き戻す */
@@ -682,35 +770,52 @@ function ReportAppInner() {
       pharmacyContact: basic.pharmacyContact || sample.basic.pharmacyContact || "",
     };
 
+    // サンプルの住まい・曜日・申し送りを重ねる。施設のサンプルは、同名の施設が無ければ施設の台帳に作ってその id を入れる
+    let working = store;
+    let extras: PatientExtras = sample.extras;
+    if (sample.extras.residence.kind === "facility" && sample.facilityName) {
+      const facilityName = sample.facilityName;
+      let facility = working.facilities.find((f) => f.name === facilityName);
+      if (!facility) {
+        const created = { ...createEmptyFacility(), name: facilityName };
+        working = upsertFacility(working, created);
+        facility = working.facilities.find((f) => f.name === facilityName) ?? created;
+      }
+      extras = { ...sample.extras, residence: { kind: "facility", facilityId: facility.id } };
+    }
+
     if (sample.asNewPatient) {
       // 「新しい患者」として開く（患者リストには登録しない）。下書きのあと、会話から基本情報が自動入力され、
       // 「患者リストに保存」で登録する流れを見せるためのサンプル
-      beginPatient(createEmptyPatient(), { ...store, selectedPatientId: null }, visit, true);
+      beginPatient({ ...createEmptyPatient(), ...extras }, { ...working, selectedPatientId: null }, visit, true);
       setBasic({ ...sample.basic, pharmacy: visit.pharmacy, pharmacyContact: visit.pharmacyContact });
       setTranscript(sample.transcript);
       setBasicOpen(false);
-      scrollToId("step-2");
+      goToStep(2);
       return;
     }
 
-    // 登録済みの患者の流れ: 患者リストに無ければ追加して選ぶ
-    let next = store;
-    let patient = next.patients.find(
+    // 登録済みの患者の流れ: 患者リストに無ければ追加して選ぶ（あれば住まい・曜日・申し送りだけサンプルの値に合わせる）
+    let next = working;
+    const found = next.patients.find(
       (p) =>
         p.familyName === sample.basic.patientFamilyName &&
         p.givenName === sample.basic.patientGivenName &&
         p.birthDate === sample.basic.birthDate,
     );
-    if (!patient) {
-      const created = basicInfoToPatient(sample.basic, createEmptyPatient());
-      next = upsertPatient(next, created);
-      patient = next.patients.find((p) => p.id === created.id) ?? created;
+    const target: Patient = found
+      ? { ...found, ...extras }
+      : { ...basicInfoToPatient(sample.basic, createEmptyPatient()), ...extras };
+    let patient: Patient = found ?? target;
+    if (!found || !isSamePatientContent(target, found)) {
+      next = upsertPatient(next, target);
+      patient = next.patients.find((p) => p.id === target.id) ?? target;
     }
     next = { ...next, selectedPatientId: patient.id };
     beginPatient(patient, next, visit, true);
     setTranscript(sample.transcript);
     setBasicOpen(false);
-    scrollToId("step-2");
+    goToStep(2);
   }
 
   /** 作業中の入力（基本情報・会話・下書き）を空にする。patientsAlso のときは患者リストと薬局名も消す */
@@ -729,6 +834,8 @@ function ReportAppInner() {
     setImportStale(false);
     resetWork();
     setBasicOpen(true);
+    // 消したら①（患者を選ぶところ）に戻る
+    goToStep(1);
   }
 
   function clearSaved(): void {
@@ -802,30 +909,26 @@ function ReportAppInner() {
   const statusOf = (n: 1 | 2 | 3 | 4): StepStatus => (n === current ? "current" : n < current ? "done" : "todo");
   const statuses = [statusOf(1), statusOf(2), statusOf(3), statusOf(4)] as const;
 
-  function jump(id: string): void {
-    scrollToId(id);
-  }
+  // 「次へ」が押せないのは、①で患者の氏名が無いときだけ
+  const nextDisabled = activeStep === 1 && !basicFilled;
 
   return (
     <>
-      <StepBar statuses={statuses} onJump={jump} />
-      <main className="mx-auto w-full max-w-[900px] space-y-6 px-4 pb-24 pt-6">
-        <header className="print:hidden">
-          <h1 className="font-display text-3xl font-bold text-ai">在宅レポAI（仮）</h1>
-          <p className="mt-2 text-ink">
-            訪問中の会話から「居宅療養管理指導報告書」の下書きを作ります。AIは下書きまでです。確認と判断は薬剤師が行います。
-          </p>
-        </header>
-
-        <div className="space-y-6 print:hidden">
+      <StepBar statuses={statuses} active={activeStep} onJump={(step) => goToStep(step)} />
+      <main className="mx-auto w-full max-w-[900px] space-y-6 px-4 pb-32 pt-6">
+        {/* ①患者（hidden で隠すだけなので、入力中の内容は他のタブへ移っても保たれる） */}
+        <div hidden={activeStep !== 1} className="space-y-6 print:hidden">
+          <header>
+            <h1 className="font-display text-3xl font-bold text-ai">在宅レポAI（仮）</h1>
+            <p className="mt-1 text-base text-ink-muted">
+              訪問中の会話から「居宅療養管理指導報告書」の下書きを作ります。AIは下書きまでです。確認と判断は薬剤師が行います。
+            </p>
+          </header>
           <BasicInfoSection
             basic={basic}
             onChange={handleBasicChange}
             open={basicOpen}
             onToggle={() => setBasicOpen((o) => !o)}
-            onLoadSample={loadSample}
-            onClearSaved={clearSaved}
-            onClearEverything={clearAll}
             groups={store.groups}
             groupIds={base.groupIds}
             onGroupIdsChange={handleGroupIdsChange}
@@ -840,17 +943,28 @@ function ReportAppInner() {
                   onNew={newPatient}
                   onStoreChange={handleStoreChange}
                   onImport={handleImport}
+                  onLoadSample={loadSample}
+                  onClearSaved={clearSaved}
+                  onClearEverything={clearAll}
                 />
-                <CurrentPatientBar
-                  name={patientName}
-                  saved={savedPatient !== null}
-                  dirty={dirty}
-                  canSave={basicFilled}
-                  notice={notice}
-                  onEdit={editPatient}
-                  onSave={savePatient}
-                  onDelete={deleteCurrent}
-                />
+                {/* 患者カード。まだ誰も選んでおらず氏名も無いとき（入口を見せるだけのとき）は出さない */}
+                {patientName !== "" || savedPatient !== null ? (
+                  <CurrentPatientBar
+                    name={patientName}
+                    saved={savedPatient !== null}
+                    dirty={dirty}
+                    canSave={basicFilled}
+                    notice={notice}
+                    onEdit={editPatient}
+                    onSave={savePatient}
+                    onDelete={deleteCurrent}
+                    kana={basic.patientKana}
+                    age={calcAge(basic.birthDate)}
+                    extras={{ residence: base.residence, visitDays: base.visitDays, handoverNote: base.handoverNote }}
+                    facilities={store.facilities}
+                    onSaveExtras={saveExtras}
+                  />
+                ) : null}
                 {importStale && dirty && savedPatient ? (
                   <WarnText>
                     読み込みで、この患者の記録が更新されました。いまの入力は古い内容のままです。そのまま保存すると読み込んだ内容を上書きします。読み込んだ内容を使うには、一覧でこの患者をもう一度選んでください（未保存の変更は消えます）。
@@ -859,6 +973,10 @@ function ReportAppInner() {
               </>
             }
           />
+        </div>
+
+        {/* ②会話 */}
+        <div hidden={activeStep !== 2} className="space-y-6 print:hidden">
           {shortcutImported && !maskState ? (
             <div id="shortcut-import" className="scroll-mt-24">
               {shortcutImported === "fragment" ? (
@@ -902,6 +1020,17 @@ function ReportAppInner() {
             onAckRxChange={(v) => setAckRxSig(v ? rxSig : null)}
             onTidyRx={handleTidyRx}
           />
+        </div>
+
+        {/* ③下書き */}
+        <div hidden={activeStep !== 3} className="space-y-6 print:hidden">
+          {!session ? (
+            <Section id="step-3" title="③ 下書き">
+              <p className="text-lg text-ink">
+                まだ下書きがありません。②の会話で「マスクして確認」→「下書きを作る」を押すと、ここに下書きが出ます。
+              </p>
+            </Section>
+          ) : null}
           {session && showSuggestions ? (
             <div id="suggestions" className="scroll-mt-24">
               <SuggestionPanel
@@ -926,12 +1055,21 @@ function ReportAppInner() {
                 // 連絡事項の空の件を除き、先頭 3 件にしてから出力へ進む
                 updateDraft(tidyDraft(session.draft));
                 setFinalizing(true);
-                scrollToId("step-4");
+                goToStep(4);
               }}
             />
           ) : null}
         </div>
 
+        {/* ④出力（印刷用の表示はここの OutputSection の中。④を開いているときだけ印刷できる） */}
+        <div hidden={activeStep !== 4} className="space-y-6">
+          {!(session && (finalizing || confirmed) && !sessionStale) ? (
+            <Section id="step-4" title="④ 出力" className="print:hidden">
+              <p className="text-lg text-ink">
+                まだ出力できません。③で下書きを確認して「出力へ進む」を押すと、ここに報告書が出ます。
+              </p>
+            </Section>
+          ) : null}
         {session && (finalizing || confirmed) && !sessionStale ? (
           <OutputSection
             unsureLabels={unsureLabels}
@@ -940,7 +1078,7 @@ function ReportAppInner() {
             onBackToEdit={() => {
               setConfirmed(false);
               setFinalizing(false);
-              scrollToId("step-3");
+              goToStep(3);
             }}
             reportText={reportText}
             email={sendFormats?.email ?? { subject: "", body: "" }}
@@ -951,7 +1089,16 @@ function ReportAppInner() {
             stale={sessionStale}
           />
         ) : null}
+        </div>
       </main>
+      <BottomNav
+        step={activeStep}
+        nextDisabled={nextDisabled}
+        nextHint="患者を選ぶと進めます"
+        onBack={() => goToStep(activeStep > 1 ? ((activeStep - 1) as StepNo) : 1)}
+        onNext={() => goToStep(activeStep < 4 ? ((activeStep + 1) as StepNo) : 4)}
+        onRestart={() => goToStep(1)}
+      />
     </>
   );
 }

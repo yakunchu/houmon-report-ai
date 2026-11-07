@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
-import { patientsInGroup, sortByKana } from "./sort";
-import { createEmptyPatient, createEmptyStore } from "./store";
-import type { Group, Patient, PatientStore } from "./types";
+import { facilitiesSorted, patientsInGroup, patientsInScope, sortByKana } from "./sort";
+import { createEmptyFacility, createEmptyPatient, createEmptyStore } from "./store";
+import type { Facility, Group, Patient, PatientStore } from "./types";
 
 function patient(id: string, familyName: string, givenName: string, kana: [string, string], groupIds: string[] = []): Patient {
   return { ...createEmptyPatient(), id, familyName, givenName, familyNameKana: kana[0], givenNameKana: kana[1], groupIds };
@@ -78,5 +78,71 @@ describe("patientsInGroup", () => {
 
   it("存在しないグループは空", () => {
     expect(patientsInGroup(storeWith([group("g1")]), "none")).toEqual([]);
+  });
+});
+
+describe("patientsInScope / facilitiesSorted（v2）", () => {
+  const inFacility = (id: string, name: string, kana: [string, string], facilityId: string | null): Patient => ({
+    ...patient(id, name, "一郎", kana),
+    residence: { kind: "facility", facilityId },
+  });
+  const suzuki = inFacility("suzuki", "鈴木", ["スズキ", "イチロウ"], "f1");
+  const watanabe = inFacility("watanabe", "渡辺", ["ワタナベ", "イチロウ"], "f1");
+  const orphan = inFacility("orphan", "伊藤", ["イトウ", "イチロウ"], null);
+  const facility = (id: string, name: string, nameKana: string, extra: Partial<Facility> = {}): Facility => ({
+    ...createEmptyFacility(),
+    id,
+    name,
+    nameKana,
+    ...extra,
+  });
+  const all = [yamamoto, sato, tanaka, suzuki, watanabe, orphan];
+  const full = (extra: Partial<PatientStore> = {}): PatientStore => ({
+    ...createEmptyStore(),
+    patients: all,
+    groups: [group("g1")],
+    facilities: [facility("f1", "ひまわり荘", "ヒマワリソウ"), facility("f2", "あおぞら荘", "アオゾラソウ")],
+    ...extra,
+  });
+
+  it("home は個人宅の全員だけ（施設の入居者は含まない）をカナ順で返す", () => {
+    expect(ids(patientsInScope(full(), { kind: "home" }))).toEqual(["sato", "tanaka", "yamamoto"]);
+  });
+
+  it("home の手動並び: homeManualOrder の順 → 残りはカナ順、施設の人・存在しない id は無視", () => {
+    const store = full({ homeSortMode: "manual", homeManualOrder: ["yamamoto", "suzuki", "ghost"] });
+    expect(ids(patientsInScope(store, { kind: "home" }))).toEqual(["yamamoto", "sato", "tanaka"]);
+  });
+
+  it("home の kana のとき homeManualOrder は使わない", () => {
+    const store = full({ homeSortMode: "kana", homeManualOrder: ["yamamoto"] });
+    expect(ids(patientsInScope(store, { kind: "home" }))).toEqual(["sato", "tanaka", "yamamoto"]);
+  });
+
+  it("group は patientsInGroup と同じ（住まいを問わない）", () => {
+    const store = full();
+    expect(ids(patientsInScope(store, { kind: "group", groupId: "g1" }))).toEqual(ids(patientsInGroup(store, "g1")));
+    const withGroup = full({ patients: [...all.slice(0, 5), { ...orphan, groupIds: ["g1"] }] });
+    expect(ids(patientsInScope(withGroup, { kind: "group", groupId: "g1" }))).toEqual(["orphan", "sato", "yamamoto"]);
+  });
+
+  it("facility はその施設の入居者だけ。manual なら facility.manualOrder に従う", () => {
+    expect(ids(patientsInScope(full(), { kind: "facility", facilityId: "f1" }))).toEqual(["suzuki", "watanabe"]);
+    const manual = full({
+      facilities: [facility("f1", "ひまわり荘", "ヒマワリソウ", { sortMode: "manual", manualOrder: ["watanabe"] }), facility("f2", "あおぞら荘", "アオゾラソウ")],
+    });
+    expect(ids(patientsInScope(manual, { kind: "facility", facilityId: "f1" }))).toEqual(["watanabe", "suzuki"]);
+    expect(patientsInScope(manual, { kind: "facility", facilityId: "f2" })).toEqual([]);
+  });
+
+  it("存在しない施設・グループは空", () => {
+    expect(patientsInScope(full(), { kind: "facility", facilityId: "none" })).toEqual([]);
+    expect(patientsInScope(full(), { kind: "group", groupId: "none" })).toEqual([]);
+  });
+
+  it("facilitiesSorted はカナ順（カナが空なら名前）で、元の配列を変えない", () => {
+    const store = full({ facilities: [facility("f1", "ひまわり荘", "ヒマワリソウ"), facility("f2", "さくら荘", ""), facility("f3", "あおぞら荘", "アオゾラソウ")] });
+    expect(facilitiesSorted(store).map((f) => f.id)).toEqual(["f3", "f2", "f1"]);
+    expect(store.facilities.map((f) => f.id)).toEqual(["f1", "f2", "f3"]);
   });
 });

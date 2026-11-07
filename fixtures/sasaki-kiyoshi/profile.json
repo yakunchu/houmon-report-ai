@@ -1,6 +1,10 @@
 {
   "_注意": "架空データ。実在の人物・医療機関とは関係ありません。医師宛（宛先＝医療機関）の報告を想定した 3 本目の台本の基本情報。",
   "fictional": true,
+  "residence": "facility",
+  "facilityName": "ひまわり荘",
+  "visitDays": [4],
+  "handoverNote": "右耳が聞こえにくい。左側から、ゆっくり大きめの声で。",
   "patient": {
     "name": "佐々木 清",
     "kana": "ササキ キヨシ",
