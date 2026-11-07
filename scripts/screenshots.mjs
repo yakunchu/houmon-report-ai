@@ -206,7 +206,8 @@ async function main() {
     await page.getByRole("button", { name: /サンプル①.*を読み込む/ }).first().click();
     await wait(page, 1500);
     await goStep(page, 2);
-    await scrollTo(page, page.getByRole("button", { name: "クリップボードから貼り付け" }), 340);
+    // ②の先頭の大きな「録音して文字起こし」ボタン（iPhone のときだけ出る）から会話欄までを 1 枚に
+    await scrollTo(page, page.getByRole("link", { name: "録音して文字起こし" }), 150);
     await shot("09-transcript");
 
     await page.getByRole("button", { name: "個人名を見えないようマスク処理する" }).click();
