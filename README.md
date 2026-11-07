@@ -46,6 +46,12 @@ iPhone 13 相当の幅（390px）で撮った実際の画面です。登場す�
 
 画面の撮り方は `scripts/screenshots.mjs`（Playwright で架空の患者リストと架空サンプルを流し、①の入口から④までタブを切り替えて撮る。本番ビルド `npm run build && npx next start -p 3001` を相手に動かし、下書きの API を 3 回呼ぶ。Playwright は devDependencies に入れていないので、使うときだけ `npm i -D playwright@1.61 && npx playwright install chromium`）。
 
+## 想定問答集（録音は自分の声だけでよい）
+
+訪問時に**決まった順番で質問し、相手の答えを薬剤師が自分の声で言い直す（オウム返し）**ための読み上げ用の台本です。録音に入るのは薬剤師の声だけで足りるので、インカムやピンマイクで自分の声を拾い、iPhone はカバンの中で録音していて構いません（相手の声を録らないので、録音の負担も個人情報の扱いも軽くなります）。同じ順番・同じ言い回しで言うことで、担当者が違っても報告書の下書きが同じ形になります。アプリの [`/interview-guide`](src/app/interview-guide/page.tsx)（大きな文字・印刷可）と、説明の [`docs/INTERVIEW-GUIDE.md`](docs/INTERVIEW-GUIDE.md) にあります。すべて架空の例文です。
+
+<img src="docs/screenshots/18-interview-guide.png" width="200" alt="想定問答集の画面。手順 1「はじめの合図」と手順 2「体調」のカード。聞く言葉を大きな太字で、言い直す型と例をその下に表示">
+
 ## 構成
 
 ```mermaid

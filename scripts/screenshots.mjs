@@ -33,7 +33,6 @@ const BASE = process.argv[3] || "http://localhost:3001";
 fs.mkdirSync(OUT, { recursive: true });
 
 const STORE_KEY = "houmon-report-ai:patients:v1";
-const CONTACT = "TEL 000-000-0000　FAX 000-000-0001";
 const wait = (p, ms) => p.waitForTimeout(ms);
 
 // ---- 架空の患者リスト（v2 の store）。曜日: 0=日 1=月 2=火 3=水 4=木 5=金 6=土 ----
@@ -110,7 +109,6 @@ async function main() {
     }, offset);
     await wait(p, 400);
   };
-  const top = async (p) => { await p.evaluate(() => window.scrollTo(0, 0)); await wait(p, 300); };
   const current = async (p) => (await p.locator('[aria-current="step"]').first().innerText().catch(() => "")).replace(/\s+/g, "");
   /** 「次へ」「戻る」でタブ n（1〜4）へ移る */
   const goStep = async (p, n) => {
@@ -294,6 +292,16 @@ async function main() {
     if (await report.count()) await report.screenshot({ path: path.join(OUT, "15-print-a4.png") });
     else await p.screenshot({ path: path.join(OUT, "15-print-a4.png"), fullPage: true });
     console.log("shot 15-print-a4");
+    await ctx.close();
+  }
+
+  // ================= F. 想定問答集（API を呼ばない。手順 1〜2 が見える位置） =================
+  {
+    const [ctx, p] = await phoneCtx();
+    await p.goto(`${BASE}/interview-guide`, { waitUntil: "networkidle" });
+    await wait(p, 500);
+    await p.evaluate(() => { const h = [...document.querySelectorAll("h2")].find((e) => e.textContent.includes("はじめの合図")); window.scrollTo(0, h.closest("li").getBoundingClientRect().top + window.scrollY - 8); });
+    await shotOf(p)("18-interview-guide");
     await ctx.close();
   }
 

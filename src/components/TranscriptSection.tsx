@@ -126,6 +126,9 @@ export function TranscriptSection({
         <summary className="flex min-h-12 cursor-pointer items-center text-lg font-bold">会話の入れ方（ボイスメモの文字起こし・音声入力）</summary>
         <ul className="mt-2 list-disc space-y-1 pl-6">
           <li>
+            質問の順番と言い方は <a href="/interview-guide" className="font-bold text-ai underline">想定問答集</a>（オウム返しで自分の声だけ録音すればよい）。
+          </li>
+          <li>
             録音した会話は、iPhone の<strong>ボイスメモ</strong>で「文字起こしを表示」→ 文字をコピー → 下の「クリップボードから貼り付け」。
           </li>
           <li>
