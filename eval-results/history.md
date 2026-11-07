@@ -26,3 +26,10 @@
 | 2026-11-05 20:17 | claude-opus-5-5 | low | 13/13 (100%) | 2/2 | 16.9 | 1073/1400 | 宛先=ケアマネ fixture=yamamoto-hanako-kikikaeshi 連絡事項A案の確認 |
 | 2026-11-05 20:17 | claude-opus-5-5 | low | 13/13 (100%) | 2/2 | 14.9 | 1021/1595 | 宛先=医療機関 fixture=sasaki-kiyoshi 連絡事項A案の確認 |
 | 2026-11-07 11:19 | claude-opus-5-5 | low | 13/13 (100%) | 2/2 | 15.2 | 1142/1367 | 宛先=ケアマネ fixture=yamamoto-hanako-echo オウム返し台本の初回評価 |
+| 2026-11-07 11:38 | claude-opus-5-5 | low | 13/13 (100%) | 2/2 | 11.2 | 959/1356 | 宛先=ケアマネ fixture=yamamoto-hanako |
+| 2026-11-07 11:38 | claude-opus-5-5 | low | 13/13 (100%) | 2/2 | 10.1 | 959/1340 | 宛先=ケアマネ fixture=yamamoto-hanako |
+| 2026-11-07 11:38 | claude-opus-5-5 | low | 13/13 (100%) | 2/2 | 10.2 | 959/1368 | 宛先=ケアマネ fixture=yamamoto-hanako |
+| 2026-11-07 11:38 | claude-opus-5-5 | low | 13/13 (100%) | 2/2 | 9.9 | 959/1353 | 宛先=ケアマネ fixture=yamamoto-hanako |
+| 2026-11-07 11:39 | claude-opus-5-5 | low | 13/13 (100%) | 2/2 | 11.5 | 1073/1428 | 宛先=ケアマネ fixture=yamamoto-hanako-kikikaeshi 提出前の最終評価 |
+| 2026-11-07 11:39 | claude-opus-5-5 | low | 13/13 (100%) | 2/2 | 13.0 | 1021/1532 | 宛先=医療機関 fixture=sasaki-kiyoshi 提出前の最終評価 |
+| 2026-11-07 11:39 | claude-opus-5-5 | low | 13/13 (100%) | 2/2 | 15.6 | 1142/1371 | 宛先=ケアマネ fixture=yamamoto-hanako-echo 提出前の最終評価 |
